@@ -81,7 +81,7 @@ final class TranscriptionCoordinator {
 
                 // Transcribe
                 let language = appState.autoDetectLanguage ? nil : appState.language
-                let text = try await transcriptionService.transcribe(
+                var text = try await transcriptionService.transcribe(
                     audioData: audioData,
                     language: language,
                     customVocabulary: vocabulary
@@ -92,8 +92,23 @@ final class TranscriptionCoordinator {
                     return
                 }
 
-                // LLM processing placeholder -- will be wired in Task 12
-                // For now, use raw transcription for all modes
+                // LLM processing if mode is not "voice"
+                let mode = appState.modeManager.resolveMode(
+                    selectedMode: appState.selectedMode,
+                    superModeEnabled: appState.superModeEnabled
+                )
+
+                if let mode, mode.id != "voice", !mode.systemPrompt.isEmpty {
+                    appState.transcriptionState = .processing
+                    if let provider = appState.modeManager.getProvider() {
+                        do {
+                            text = try await provider.processText(text, systemPrompt: mode.systemPrompt)
+                        } catch {
+                            // If LLM fails, fall back to raw transcription
+                            print("LLM processing failed, using raw transcription: \(error)")
+                        }
+                    }
+                }
 
                 // Inject text
                 await textInjectionService.injectText(text)

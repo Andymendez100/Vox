@@ -49,6 +49,7 @@ final class AppState: ObservableObject {
     @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 524288
 
     // MARK: - Services
+    let modeManager = ModeManager()
     let permissionsService = PermissionsService()
     let audioService = AudioCaptureService()
     let transcriptionService = TranscriptionService()
