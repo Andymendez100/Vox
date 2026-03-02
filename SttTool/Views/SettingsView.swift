@@ -47,6 +47,9 @@ struct SettingsView: View {
 struct GeneralTab: View {
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var permissions = AppState.shared.permissionsService
+    @ObservedObject private var deviceManager = AppState.shared.audioDeviceManager
+    @State private var isRecordingHotkey = false
+    @State private var eventMonitor: Any?
 
     var body: some View {
         Form {
@@ -58,11 +61,29 @@ struct GeneralTab: View {
                 .pickerStyle(.segmented)
 
                 LabeledContent("Hotkey") {
-                    Text(hotkeyDisplayString)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    Button {
+                        startRecordingHotkey()
+                    } label: {
+                        Text(isRecordingHotkey ? "Press new hotkey..." : hotkeyDisplayString)
+                            .foregroundStyle(isRecordingHotkey ? .orange : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                isRecordingHotkey ? Color.orange.opacity(0.15) : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 6)
+                            )
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Section("Audio Input") {
+                Picker("Microphone", selection: $appState.selectedInputDeviceUID) {
+                    Text("System Default").tag(AudioDeviceManager.systemDefaultUID)
+                    ForEach(deviceManager.inputDevices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
                 }
             }
 
@@ -125,6 +146,10 @@ struct GeneralTab: View {
     }
 
     private var hotkeyDisplayString: String {
+        if appState.hotkeyModifierOnly {
+            return modifierKeyName(UInt16(appState.hotkeyKeyCode))
+        }
+
         var parts: [String] = []
         let flags = CGEventFlags(rawValue: UInt64(appState.hotkeyModifiers))
 
@@ -135,6 +160,20 @@ struct GeneralTab: View {
 
         parts.append(keyCodeName(UInt16(appState.hotkeyKeyCode)))
         return parts.joined()
+    }
+
+    private func modifierKeyName(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        case 54: return "Right \u{2318}"
+        case 55: return "Left \u{2318}"
+        case 56: return "Left \u{21E7}"
+        case 60: return "Right \u{21E7}"
+        case 58: return "Left \u{2325}"
+        case 61: return "Right \u{2325}"
+        case 59: return "Left \u{2303}"
+        case 62: return "Right \u{2303}"
+        default: return "Key \(keyCode)"
+        }
     }
 
     private func keyCodeName(_ keyCode: UInt16) -> String {
@@ -153,6 +192,71 @@ struct GeneralTab: View {
         ]
         return names[keyCode] ?? "Key \(keyCode)"
     }
+
+    private func startRecordingHotkey() {
+        guard !isRecordingHotkey else { return }
+        isRecordingHotkey = true
+
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            if event.type == .flagsChanged {
+                // Only trigger on modifier press (not release)
+                let modifierKeyCodes: Set<UInt16> = [
+                    54, 55, // Right/Left Command
+                    56, 60, // Left/Right Shift
+                    58, 61, // Left/Right Option
+                    59, 62, // Left/Right Control
+                ]
+                guard modifierKeyCodes.contains(event.keyCode) else {
+                    return event
+                }
+                // Check if this is a press (modifier flag present) not a release
+                let hasModifier: Bool
+                switch event.keyCode {
+                case 54, 55: hasModifier = event.modifierFlags.contains(.command)
+                case 56, 60: hasModifier = event.modifierFlags.contains(.shift)
+                case 58, 61: hasModifier = event.modifierFlags.contains(.option)
+                case 59, 62: hasModifier = event.modifierFlags.contains(.control)
+                default: hasModifier = false
+                }
+                guard hasModifier else { return event }
+
+                self.applyHotkey(
+                    keyCode: event.keyCode,
+                    modifiers: CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)),
+                    modifierOnly: true
+                )
+                return nil
+            } else {
+                // keyDown: key combo or standalone key
+                let cgModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+                let hasModifiers = !event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+                self.applyHotkey(
+                    keyCode: event.keyCode,
+                    modifiers: hasModifiers ? cgModifiers : [],
+                    modifierOnly: false
+                )
+                return nil
+            }
+        }
+    }
+
+    private func applyHotkey(keyCode: UInt16, modifiers: CGEventFlags, modifierOnly: Bool) {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+        isRecordingHotkey = false
+
+        // Update HotkeyManager
+        HotkeyManager.shared.setHotkey(keyCode: keyCode, modifiers: modifiers, modifierOnly: modifierOnly)
+        HotkeyManager.shared.stop()
+        HotkeyManager.shared.start()
+
+        // Keep AppState in sync
+        appState.hotkeyKeyCode = Int(keyCode)
+        appState.hotkeyModifiers = Int(modifiers.rawValue)
+        appState.hotkeyModifierOnly = modifierOnly
+    }
 }
 
 // MARK: - Models Tab
@@ -161,11 +265,11 @@ struct ModelsTab: View {
     @ObservedObject private var appState = AppState.shared
     private let models = TranscriptionService.ModelInfo.available
 
-    private let tierInfo: [(tier: String, description: String, icon: String)] = [
-        ("Nano", "Fastest, lowest memory usage. Best for quick notes.", "hare"),
-        ("Fast", "Good balance of speed and accuracy. Recommended.", "bolt"),
-        ("Pro", "Higher accuracy, moderate resource usage.", "star"),
-        ("Ultra", "Maximum accuracy, requires more memory and time.", "sparkles"),
+    private let modelDescriptions: [String: String] = [
+        "Tiny": "Fastest, lowest memory. Best for quick notes.",
+        "Base": "Good balance of speed and accuracy. Recommended.",
+        "Small": "Higher accuracy, moderate resource usage.",
+        "Large V3": "Maximum accuracy, requires more memory and time.",
     ]
 
     var body: some View {
@@ -191,36 +295,22 @@ struct ModelsTab: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            }
 
-            Section("Model Tiers") {
-                ForEach(tierInfo, id: \.tier) { info in
-                    HStack(spacing: 12) {
-                        Image(systemName: info.icon)
-                            .frame(width: 24)
-                            .foregroundStyle(tierColor(info.tier))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(info.tier)
-                                .fontWeight(.medium)
-                            Text(info.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                if let desc = selectedModelDescription {
+                    Text(desc)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
     }
 
-    private func tierColor(_ tier: String) -> Color {
-        switch tier {
-        case "Nano": return .green
-        case "Fast": return .blue
-        case "Pro": return .purple
-        case "Ultra": return .orange
-        default: return .primary
+    private var selectedModelDescription: String? {
+        guard let model = models.first(where: { $0.id == appState.selectedModel }) else {
+            return nil
         }
+        return modelDescriptions[model.displayName]
     }
 }
 

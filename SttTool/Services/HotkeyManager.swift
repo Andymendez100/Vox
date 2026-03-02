@@ -1,6 +1,9 @@
 import Carbon
 import CoreGraphics
 import Foundation
+import os.log
+
+private let hotkeyLogger = Logger(subsystem: "com.stttool.app", category: "HotkeyManager")
 
 final class HotkeyManager {
     static let shared = HotkeyManager()
@@ -30,6 +33,7 @@ final class HotkeyManager {
 
     func start() {
         loadSavedHotkey()
+        hotkeyLogger.notice("keyCode=\(self.keyCode), modifierOnly=\(self.useModifierOnly), modifiers=\(self.requiredModifiers.rawValue)")
 
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
@@ -43,6 +47,7 @@ final class HotkeyManager {
             callback: hotkeyCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            hotkeyLogger.warning("cghidEventTap failed, trying cgSessionEventTap...")
             guard let sessionTap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
@@ -51,12 +56,14 @@ final class HotkeyManager {
                 callback: hotkeyCallback,
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
             ) else {
-                print("Failed to create event tap. Ensure Accessibility/Input Monitoring permission is granted.")
+                hotkeyLogger.error("FAILED to create any event tap. Grant Accessibility permission and restart.")
                 return
             }
+            hotkeyLogger.notice("Using cgSessionEventTap (fallback)")
             setupRunLoop(with: sessionTap)
             return
         }
+        hotkeyLogger.notice("Event tap created successfully (cghidEventTap)")
         setupRunLoop(with: tap)
     }
 

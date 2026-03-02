@@ -7,29 +7,39 @@ import Combine
 struct TranscriptionOverlayView: View {
     @ObservedObject private var appState = AppState.shared
 
+    private var isActive: Bool {
+        switch appState.transcriptionState {
+        case .recording, .transcribing, .processing:
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: isActive ? 12 : 8) {
             statusDot
             VStack(alignment: .leading, spacing: 2) {
                 Text(statusText)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: isActive ? 16 : 12, weight: .semibold))
                     .foregroundStyle(.primary)
 
                 if !appState.liveTranscriptionText.isEmpty {
                     Text(appState.liveTranscriptionText)
-                        .font(.system(size: 11))
+                        .font(.system(size: isActive ? 13 : 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
-                        .frame(maxWidth: 260, alignment: .leading)
+                        .frame(maxWidth: isActive ? 340 : 260, alignment: .leading)
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, isActive ? 16 : 12)
+        .padding(.vertical, isActive ? 12 : 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: isActive ? 14 : 10, style: .continuous))
         .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-        .frame(maxWidth: 300)
+        .frame(maxWidth: isActive ? 400 : 300)
+        .animation(.easeInOut(duration: 0.2), value: isActive)
     }
 
     // MARK: - Status Dot
@@ -37,19 +47,21 @@ struct TranscriptionOverlayView: View {
     @ViewBuilder
     private var statusDot: some View {
         let color = dotColor
+        let dotSize: CGFloat = isActive ? 14 : 8
+        let containerSize: CGFloat = isActive ? 28 : 16
         ZStack {
             // Pulse ring (only while recording)
             if appState.transcriptionState == .recording {
                 Circle()
                     .fill(color.opacity(0.3))
-                    .frame(width: 14, height: 14)
+                    .frame(width: dotSize * 1.8, height: dotSize * 1.8)
                     .modifier(PulseModifier())
             }
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: dotSize, height: dotSize)
         }
-        .frame(width: 16, height: 16)
+        .frame(width: containerSize, height: containerSize)
     }
 
     // MARK: - Helpers

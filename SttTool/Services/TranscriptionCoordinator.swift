@@ -53,7 +53,8 @@ final class TranscriptionCoordinator {
                 if appState.muteWhileRecording {
                     await appState.audioMuteService.muteOutput()
                 }
-                try await audioService.startRecording()
+                let deviceID = appState.audioDeviceManager.resolveDeviceID(forUID: appState.selectedInputDeviceUID)
+                try await audioService.startRecording(inputDeviceID: deviceID)
                 appState.transcriptionState = .recording
                 appState.liveTranscriptionText = ""
             } catch {

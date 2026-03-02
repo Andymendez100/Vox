@@ -1,6 +1,9 @@
 import SwiftUI
 import AppKit
 import Combine
+import os.log
+
+private let logger = Logger(subsystem: "com.stttool.app", category: "AppDelegate")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -17,21 +20,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeState()
 
         // Check permissions
-        AppState.shared.permissionsService.checkPermissions()
+        let permissions = AppState.shared.permissionsService
+        permissions.checkPermissions()
+        logger.notice("Accessibility granted: \(permissions.accessibilityGranted)")
+        logger.notice("Microphone granted: \(permissions.microphoneGranted)")
+
+        // Request accessibility if not granted (shows system prompt dialog)
+        if !permissions.accessibilityGranted {
+            logger.notice("Requesting accessibility permission...")
+            permissions.requestAccessibility()
+        }
 
         // Wire hotkey to coordinator
         let coordinator = AppState.shared.coordinator
         HotkeyManager.shared.onKeyDown = {
             Task { @MainActor in
+                logger.notice("Hotkey DOWN - starting recording")
                 coordinator.handleHotkeyPressed()
             }
         }
         HotkeyManager.shared.onKeyUp = {
             Task { @MainActor in
+                logger.notice("Hotkey UP - stopping recording")
                 coordinator.handleHotkeyReleased()
             }
         }
-        HotkeyManager.shared.start()
+
+        // Start hotkey manager (will retry after permission granted)
+        if permissions.accessibilityGranted {
+            HotkeyManager.shared.start()
+            logger.notice("HotkeyManager started")
+        } else {
+            logger.notice("Deferring HotkeyManager start until accessibility is granted")
+            // Poll for permission grant, then start hotkey manager
+            Task {
+                while !AXIsProcessTrusted() {
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                permissions.accessibilityGranted = true
+                logger.notice("Accessibility now granted! Starting HotkeyManager...")
+                HotkeyManager.shared.start()
+                logger.notice("HotkeyManager started after permission grant")
+            }
+        }
 
         // Load model in background
         Task {

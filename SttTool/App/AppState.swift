@@ -47,10 +47,13 @@ final class AppState: ObservableObject {
     @AppStorage("customModesJSON") var customModesJSON: String = "[]"
     @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = 54 // Right Command
     @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 0
+    @AppStorage("hotkeyModifierOnly") var hotkeyModifierOnly: Bool = true
     @AppStorage("muteWhileRecording") var muteWhileRecording: Bool = false
+    @AppStorage("selectedInputDeviceUID") var selectedInputDeviceUID: String = AudioDeviceManager.systemDefaultUID
 
     // MARK: - Services
     let modeManager = ModeManager()
+    let audioDeviceManager = AudioDeviceManager()
     let permissionsService = PermissionsService()
     let audioService = AudioCaptureService()
     let transcriptionService = TranscriptionService()
@@ -70,13 +73,13 @@ final class AppState: ObservableObject {
     var modelDisplayName: String {
         switch selectedModel {
         case "openai_whisper-tiny", "openai_whisper-tiny.en":
-            return "Nano"
+            return "Tiny"
         case "openai_whisper-base", "openai_whisper-base.en":
-            return "Fast"
+            return "Base"
         case "openai_whisper-small", "openai_whisper-small.en":
-            return "Pro"
+            return "Small"
         case "openai_whisper-large-v3":
-            return "Ultra"
+            return "Large V3"
         default:
             return selectedModel
         }

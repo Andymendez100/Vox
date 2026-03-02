@@ -1,4 +1,6 @@
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import Foundation
 
 actor AudioCaptureService {
@@ -8,12 +10,26 @@ actor AudioCaptureService {
 
     private let targetSampleRate: Double = 16000
 
-    func startRecording() throws {
+    func startRecording(inputDeviceID: AudioDeviceID? = nil) throws {
         guard !isRecording else { return }
 
         audioSamples = []
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+
+        // Set specific input device if requested
+        if let deviceID = inputDeviceID, let audioUnit = inputNode.audioUnit {
+            var id = deviceID
+            AudioUnitSetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &id,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+        }
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard let targetFormat = AVAudioFormat(
