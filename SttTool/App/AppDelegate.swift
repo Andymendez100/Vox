@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover!
     private var settingsWindow: NSWindow?
     private var stateObservation: AnyCancellable?
+    private let overlayController = OverlayWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -154,8 +155,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func observeState() {
         stateObservation = AppState.shared.$transcriptionState
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] state in
                 self?.updateStatusItemIcon()
+
+                switch state {
+                case .recording, .transcribing, .processing:
+                    self?.overlayController.show()
+                default:
+                    self?.overlayController.dismiss()
+                }
             }
     }
 }
