@@ -128,6 +128,14 @@ struct GeneralTab: View {
         .onAppear {
             permissions.checkPermissions()
         }
+        .onDisappear {
+            // Clean up any active hotkey recording monitor
+            if let monitor = eventMonitor {
+                NSEvent.removeMonitor(monitor)
+                eventMonitor = nil
+            }
+            isRecordingHotkey = false
+        }
     }
 
     private func permissionRow(name: String, granted: Bool, onGrant: @escaping () -> Void, onOpen: @escaping () -> Void) -> some View {

@@ -29,7 +29,11 @@ final class TranscriptionCoordinator {
             return
         }
 
-        permissionsService.checkPermissions()
+        // Skip re-checking permissions every press — already verified at startup
+        // and when user grants via Settings. Only check if not yet granted.
+        if !permissionsService.microphoneGranted || !permissionsService.accessibilityGranted {
+            permissionsService.checkPermissions()
+        }
         guard permissionsService.microphoneGranted else {
             appState.showError("Microphone permission required")
             return

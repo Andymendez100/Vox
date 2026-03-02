@@ -52,15 +52,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.notice("HotkeyManager started")
         } else {
             logger.notice("Deferring HotkeyManager start until accessibility is granted")
-            // Poll for permission grant, then start hotkey manager
             Task {
+                // Poll with backoff — no macOS notification exists for this
+                var interval: Duration = .seconds(1)
+                let maxInterval: Duration = .seconds(10)
                 while !AXIsProcessTrusted() {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: interval)
+                    if interval < maxInterval { interval *= 2 }
                 }
                 permissions.accessibilityGranted = true
                 logger.notice("Accessibility now granted! Starting HotkeyManager...")
                 HotkeyManager.shared.start()
-                logger.notice("HotkeyManager started after permission grant")
             }
         }
 

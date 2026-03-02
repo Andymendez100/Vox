@@ -9,11 +9,14 @@ actor AudioCaptureService {
     private var isRecording = false
 
     private let targetSampleRate: Double = 16000
+    // Cap at 5 minutes to bound memory (~4.8MB at 16kHz mono float32)
+    private let maxRecordingSeconds: Double = 300
 
     func startRecording(inputDeviceID: AudioDeviceID? = nil) throws {
         guard !isRecording else { return }
 
         audioSamples = []
+        audioSamples.reserveCapacity(Int(targetSampleRate) * 60) // Pre-allocate 1 min
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
@@ -80,6 +83,8 @@ actor AudioCaptureService {
         converter: AVAudioConverter?,
         targetFormat: AVAudioFormat
     ) {
+        let maxSamples = Int(targetSampleRate * maxRecordingSeconds)
+        guard audioSamples.count < maxSamples else { return }
         if let converter = converter {
             let frameCount = AVAudioFrameCount(
                 Double(buffer.frameLength) * targetSampleRate / buffer.format.sampleRate
