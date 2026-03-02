@@ -8,6 +8,11 @@ final class TranscriptionCoordinator {
     private let textInjectionService: TextInjectionService
     private let permissionsService: PermissionsService
     private var transcriptionTask: Task<Void, Never>?
+    private var undoTimer: Task<Void, Never>?
+
+    // Hotkey debounce
+    private var lastHotkeyPressTime: Date?
+    private let debounceInterval: TimeInterval = 0.3
 
     init(
         appState: AppState,
@@ -24,23 +29,28 @@ final class TranscriptionCoordinator {
     }
 
     func handleHotkeyPressed() {
+        // Debounce rapid presses
+        let now = Date()
+        if let last = lastHotkeyPressTime, now.timeIntervalSince(last) < debounceInterval {
+            return
+        }
+        lastHotkeyPressTime = now
+
         guard appState.isModelLoaded else {
             appState.showError("Model not loaded yet")
             return
         }
 
-        // Skip re-checking permissions every press — already verified at startup
-        // and when user grants via Settings. Only check if not yet granted.
-        if !permissionsService.microphoneGranted || !permissionsService.accessibilityGranted {
-            permissionsService.checkPermissions()
-        }
+        // Only check cached permission state — never trigger system dialogs
+        // from the hotkey handler. Permissions are requested at startup and
+        // in Settings; showing a modal dialog here can race with the event
+        // tap and confuse the user.
         guard permissionsService.microphoneGranted else {
-            appState.showError("Microphone permission required")
+            appState.showError("Microphone permission required — check System Settings")
             return
         }
         guard permissionsService.accessibilityGranted else {
-            appState.showError("Accessibility permission required")
-            permissionsService.requestAccessibility()
+            appState.showError("Accessibility permission required — check System Settings")
             return
         }
 
@@ -49,6 +59,11 @@ final class TranscriptionCoordinator {
             handleHotkeyReleased()
             return
         }
+
+        // Clear undo state on new recording
+        appState.canUndo = false
+        appState.lastInjectedText = nil
+        undoTimer?.cancel()
 
         // startRecording() is actor-isolated and throws, so we need try await.
         // Since this method is synchronous, wrap in a Task.
@@ -60,8 +75,12 @@ final class TranscriptionCoordinator {
                 let deviceID = appState.audioDeviceManager.resolveDeviceID(forUID: appState.selectedInputDeviceUID)
                 try await audioService.startRecording(inputDeviceID: deviceID)
                 appState.transcriptionState = .recording
+                appState.recordingStartTime = Date()
                 appState.liveTranscriptionText = ""
+                appState.detectedLanguage = ""
+                SoundFeedbackService.shared.playStartRecording()
             } catch {
+                SoundFeedbackService.shared.playError()
                 appState.showError("Failed to start recording: \(error.localizedDescription)")
             }
         }
@@ -69,6 +88,9 @@ final class TranscriptionCoordinator {
 
     func handleHotkeyReleased() {
         guard case .recording = appState.transcriptionState else { return }
+
+        appState.recordingStartTime = nil
+        SoundFeedbackService.shared.playStopRecording()
 
         transcriptionTask = Task { @MainActor in
             do {
@@ -91,13 +113,25 @@ final class TranscriptionCoordinator {
                 // Get custom vocabulary
                 let vocabulary = parseCustomVocabulary()
 
-                // Transcribe
+                // Transcribe with live preview callback
                 let language = appState.autoDetectLanguage ? nil : appState.language
-                var text = try await transcriptionService.transcribe(
+                let result = try await transcriptionService.transcribe(
                     audioData: audioData,
                     language: language,
-                    customVocabulary: vocabulary
+                    customVocabulary: vocabulary,
+                    onProgress: { [weak appState] text in
+                        Task { @MainActor in
+                            appState?.liveTranscriptionText = text
+                        }
+                    }
                 )
+
+                var text = result.text
+
+                // Update detected language
+                if appState.autoDetectLanguage {
+                    appState.detectedLanguage = result.language
+                }
 
                 guard !text.isEmpty else {
                     appState.transcriptionState = .idle
@@ -122,16 +156,43 @@ final class TranscriptionCoordinator {
                     }
                 }
 
-                // Inject text
-                await textInjectionService.injectText(text)
+                // Inject or copy text
+                if appState.copyOnlyMode {
+                    await textInjectionService.copyToClipboard(text)
+                } else {
+                    await textInjectionService.injectText(text)
+                }
 
                 // Save to recent
                 appState.addTranscription(text)
+
+                // Set undo state
+                appState.lastInjectedText = text
+                appState.canUndo = true
+                undoTimer?.cancel()
+                undoTimer = Task {
+                    try? await Task.sleep(for: .seconds(30))
+                    appState.canUndo = false
+                    appState.lastInjectedText = nil
+                }
+
+                SoundFeedbackService.shared.playComplete()
                 appState.transcriptionState = .idle
 
             } catch {
+                SoundFeedbackService.shared.playError()
                 appState.showError(error.localizedDescription)
             }
+        }
+    }
+
+    func undoLastInjection() {
+        guard appState.canUndo else { return }
+        appState.canUndo = false
+        appState.lastInjectedText = nil
+        undoTimer?.cancel()
+        Task {
+            await textInjectionService.undoLastInjection()
         }
     }
 
@@ -145,6 +206,7 @@ final class TranscriptionCoordinator {
             Task { await appState.audioMuteService.restoreOutput() }
         }
         appState.transcriptionState = .idle
+        appState.recordingStartTime = nil
         appState.liveTranscriptionText = ""
     }
 

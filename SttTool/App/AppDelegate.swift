@@ -19,7 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         observeState()
 
-        // Check permissions
+        // Check and request ALL permissions up front so the user isn't
+        // surprised by dialogs when they press the hotkey. checkPermissions()
+        // calls requestAccess() for mic if .notDetermined (one-time dialog).
         let permissions = AppState.shared.permissionsService
         permissions.checkPermissions()
         logger.notice("Accessibility granted: \(permissions.accessibilityGranted)")
@@ -71,8 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.loadModel()
         }
 
-        // Open settings on launch
-        openSettings()
     }
 
     // MARK: - Status Item
@@ -182,18 +182,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func loadModel() async {
         let state = AppState.shared
         state.transcriptionState = .loading
+        state.modelLoadProgress = 0.0
+
+        let progressCallback: (Progress) -> Void = { progress in
+            Task { @MainActor in
+                AppState.shared.modelLoadProgress = progress.fractionCompleted
+            }
+        }
 
         do {
-            try await state.transcriptionService.loadModel(state.selectedModel)
+            try await state.transcriptionService.loadModel(state.selectedModel, progressCallback: progressCallback)
             state.isModelLoaded = true
+            state.modelLoadProgress = 1.0
             state.transcriptionState = .idle
         } catch {
             state.showError("Failed to load model: \(error.localizedDescription)")
             // Try fallback to base model
+            state.modelLoadProgress = 0.0
             do {
-                try await state.transcriptionService.loadModel("openai_whisper-base")
+                try await state.transcriptionService.loadModel("openai_whisper-base", progressCallback: progressCallback)
                 state.selectedModel = "openai_whisper-base"
                 state.isModelLoaded = true
+                state.modelLoadProgress = 1.0
                 state.transcriptionState = .idle
             } catch {
                 state.showError("Failed to load any model")

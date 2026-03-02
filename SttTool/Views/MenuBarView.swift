@@ -52,6 +52,27 @@ struct MenuBarView: View {
 
             Spacer()
 
+            if appState.canUndo {
+                Button {
+                    appState.coordinator.undoLastInjection()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 10))
+                        Text("Undo")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.orange.opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
             Text(appState.modelDisplayName)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -86,13 +107,24 @@ struct MenuBarView: View {
     private var statusSection: some View {
         Group {
             if appState.transcriptionState == .loading {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Loading model...")
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading model...")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if appState.modelLoadProgress > 0 {
+                            Text("\(Int(appState.modelLoadProgress * 100))%")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if appState.modelLoadProgress > 0 {
+                        ProgressView(value: appState.modelLoadProgress)
+                            .tint(.accentColor)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)

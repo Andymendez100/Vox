@@ -105,6 +105,11 @@ struct GeneralTab: View {
                 }
             }
 
+            Section("Behavior") {
+                Toggle("Sound feedback", isOn: $appState.soundFeedbackEnabled)
+                Toggle("Copy to clipboard only (don't auto-paste)", isOn: $appState.copyOnlyMode)
+            }
+
             Section("Startup") {
                 Toggle("Launch at Login", isOn: $appState.launchAtLogin)
             }

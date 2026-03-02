@@ -34,6 +34,10 @@ final class AppState: ObservableObject {
     @Published var isModelLoaded: Bool = false
     @Published var modelLoadProgress: Double = 0.0
     @Published var liveTranscriptionText: String = ""
+    @Published var recordingStartTime: Date?
+    @Published var lastInjectedText: String?
+    @Published var canUndo: Bool = false
+    @Published var detectedLanguage: String = ""
 
     // MARK: - Settings (persisted)
     @AppStorage("selectedModel") var selectedModel: String = "openai_whisper-base"
@@ -50,6 +54,8 @@ final class AppState: ObservableObject {
     @AppStorage("hotkeyModifierOnly") var hotkeyModifierOnly: Bool = true
     @AppStorage("muteWhileRecording") var muteWhileRecording: Bool = false
     @AppStorage("selectedInputDeviceUID") var selectedInputDeviceUID: String = AudioDeviceManager.systemDefaultUID
+    @AppStorage("soundFeedbackEnabled") var soundFeedbackEnabled: Bool = true
+    @AppStorage("copyOnlyMode") var copyOnlyMode: Bool = false
 
     // MARK: - Services
     let modeManager = ModeManager()

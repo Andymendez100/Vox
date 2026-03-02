@@ -1,6 +1,11 @@
 import Foundation
 import WhisperKit
 
+struct TranscriptionOutput {
+    let text: String
+    let language: String
+}
+
 actor TranscriptionService {
     private var whisperKit: WhisperKit?
     private var isLoaded = false
@@ -22,15 +27,24 @@ actor TranscriptionService {
         ]
     }
 
-    func loadModel(_ modelName: String) async throws {
+    func loadModel(_ modelName: String, progressCallback: ((Progress) -> Void)? = nil) async throws {
+        // Download with progress reporting
+        let modelFolder = try await WhisperKit.download(
+            variant: modelName,
+            progressCallback: progressCallback
+        )
+
+        // Init from downloaded folder
         whisperKit = try await WhisperKit(
-            model: modelName,
-            verbose: false,
-            logLevel: .error,
-            prewarm: true,
-            load: true,
-            download: true,
-            useBackgroundDownloadSession: false
+            WhisperKitConfig(
+                modelFolder: modelFolder.path,
+                verbose: false,
+                logLevel: .error,
+                prewarm: true,
+                load: true,
+                download: false,
+                useBackgroundDownloadSession: false
+            )
         )
         isLoaded = true
     }
@@ -38,8 +52,9 @@ actor TranscriptionService {
     func transcribe(
         audioData: AudioData,
         language: String? = nil,
-        customVocabulary: [String] = []
-    ) async throws -> String {
+        customVocabulary: [String] = [],
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> TranscriptionOutput {
         guard let whisperKit else {
             throw TranscriptionError.modelNotLoaded
         }
@@ -69,13 +84,21 @@ actor TranscriptionService {
             }
         }
 
-        let result = try await whisperKit.transcribe(
+        let callback: TranscriptionCallback = { progress in
+            onProgress?(progress.text)
+            return nil // continue transcription
+        }
+
+        let results = try await whisperKit.transcribe(
             audioArray: audioData.samples,
-            decodeOptions: options
+            decodeOptions: options,
+            callback: callback
         ) as [TranscriptionResult]
 
-        let text = result.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return text
+        let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        let detectedLanguage = results.first?.language ?? ""
+
+        return TranscriptionOutput(text: text, language: detectedLanguage)
     }
 
     func unloadModel() {

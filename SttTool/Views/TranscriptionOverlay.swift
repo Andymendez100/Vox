@@ -46,9 +46,26 @@ struct TranscriptionOverlayView: View {
             .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(statusText)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
+                HStack(spacing: 8) {
+                    Text(statusText)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+
+                    if isRecording, let startTime = appState.recordingStartTime {
+                        RecordingTimerView(startTime: startTime)
+                    }
+
+                    if !appState.detectedLanguage.isEmpty {
+                        Text(appState.detectedLanguage.uppercased())
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(Color.blue.opacity(0.7))
+                            )
+                    }
+                }
 
                 if !appState.liveTranscriptionText.isEmpty {
                     Text(appState.liveTranscriptionText)
@@ -96,6 +113,25 @@ struct TranscriptionOverlayView: View {
         case .transcribing: return "Transcribing..."
         case .processing: return "Processing..."
         default: return ""
+        }
+    }
+}
+
+// MARK: - Recording Timer
+
+private struct RecordingTimerView: View {
+    let startTime: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let elapsed = context.date.timeIntervalSince(startTime)
+            let minutes = Int(elapsed) / 60
+            let seconds = Int(elapsed) % 60
+            let nearingLimit = elapsed >= 270 // 4:30 — warn near 5-min cap
+
+            Text(String(format: "%d:%02d", minutes, seconds))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(nearingLimit ? .orange : .secondary)
         }
     }
 }
@@ -156,32 +192,15 @@ final class OverlayWindowController {
     // MARK: - Positioning
 
     private func repositionWindow(_ window: NSWindow) {
-        let mouseLocation = NSEvent.mouseLocation
-        let offsetX: CGFloat = 20
-        let offsetY: CGFloat = -100
+        guard let screen = NSScreen.main else { return }
+        let visibleFrame = screen.visibleFrame
+        let windowSize = window.frame.size
 
-        var origin = NSPoint(
-            x: mouseLocation.x + offsetX,
-            y: mouseLocation.y + offsetY
+        // Top of the bottom quarter of screen, horizontally centered
+        let origin = NSPoint(
+            x: visibleFrame.midX - windowSize.width / 2,
+            y: visibleFrame.minY + visibleFrame.height * 0.25
         )
-
-        if let screen = NSScreen.main {
-            let visibleFrame = screen.visibleFrame
-            let windowSize = window.frame.size
-
-            if origin.x + windowSize.width > visibleFrame.maxX {
-                origin.x = mouseLocation.x - windowSize.width - offsetX
-            }
-            if origin.x < visibleFrame.minX {
-                origin.x = visibleFrame.minX
-            }
-            if origin.y < visibleFrame.minY {
-                origin.y = visibleFrame.minY
-            }
-            if origin.y + windowSize.height > visibleFrame.maxY {
-                origin.y = visibleFrame.maxY - windowSize.height
-            }
-        }
 
         window.setFrameOrigin(origin)
     }
