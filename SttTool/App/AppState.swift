@@ -45,8 +45,8 @@ final class AppState: ObservableObject {
     @AppStorage("launchAtLogin") var launchAtLogin: Bool = false
     @AppStorage("customVocabularyJSON") var customVocabularyJSON: String = "[]"
     @AppStorage("customModesJSON") var customModesJSON: String = "[]"
-    @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = 49
-    @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 524288
+    @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = 54 // Right Command
+    @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 0
     @AppStorage("muteWhileRecording") var muteWhileRecording: Bool = false
 
     // MARK: - Services

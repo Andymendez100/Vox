@@ -5,11 +5,8 @@ struct SttToolApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            EmptyView()
-        } label: {
+        Settings {
             EmptyView()
         }
-        .menuBarExtraStyle(.window)
     }
 }
