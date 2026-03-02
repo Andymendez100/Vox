@@ -19,7 +19,7 @@ let package = Package(
                 "WhisperKit"
             ],
             path: "SttTool",
-            exclude: ["SttTool.entitlements"],
+            exclude: ["SttTool.entitlements", "Info.plist"],
             resources: [
                 .copy("Resources/AppIcon.icns")
             ]
