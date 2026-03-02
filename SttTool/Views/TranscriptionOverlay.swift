@@ -6,80 +6,26 @@ import Combine
 
 struct TranscriptionOverlayView: View {
     @ObservedObject private var appState = AppState.shared
-    @State private var appearAnimation = false
 
     private var isRecording: Bool {
         appState.transcriptionState == .recording
     }
 
+    private var isLoading: Bool {
+        appState.transcriptionState == .loading
+    }
+
     var body: some View {
-        HStack(spacing: 14) {
-            // Animated recording indicator
-            ZStack {
-                if isRecording {
-                    Circle()
-                        .stroke(Color.red.opacity(0.2), lineWidth: 2)
-                        .frame(width: 36, height: 36)
-                        .scaleEffect(appearAnimation ? 1.6 : 1.0)
-                        .opacity(appearAnimation ? 0 : 0.6)
-                        .animation(
-                            .easeOut(duration: 1.5).repeatForever(autoreverses: false),
-                            value: appearAnimation
-                        )
-
-                    Circle()
-                        .stroke(Color.red.opacity(0.3), lineWidth: 2)
-                        .frame(width: 36, height: 36)
-                        .scaleEffect(appearAnimation ? 1.3 : 1.0)
-                        .opacity(appearAnimation ? 0 : 0.8)
-                        .animation(
-                            .easeOut(duration: 1.5).repeatForever(autoreverses: false).delay(0.3),
-                            value: appearAnimation
-                        )
-                }
-
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: isRecording ? 16 : 10, height: isRecording ? 16 : 10)
-                    .shadow(color: dotColor.opacity(0.5), radius: isRecording ? 6 : 0)
+        Group {
+            if isLoading {
+                loadingBody
+            } else if isRecording {
+                recordingBody
+            } else {
+                nonRecordingBody
             }
-            .frame(width: 40, height: 40)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(statusText)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-
-                    if isRecording, let startTime = appState.recordingStartTime {
-                        RecordingTimerView(startTime: startTime)
-                    }
-
-                    if !appState.detectedLanguage.isEmpty {
-                        Text(appState.detectedLanguage.uppercased())
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Color.blue.opacity(0.7))
-                            )
-                    }
-                }
-
-                if !appState.liveTranscriptionText.isEmpty {
-                    Text(appState.liveTranscriptionText)
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: 380, alignment: .leading)
-                }
-            }
-
-            Spacer(minLength: 0)
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 24)
+        .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .frame(width: 440)
         .background {
@@ -92,8 +38,97 @@ struct TranscriptionOverlayView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
         }
-        .onAppear { appearAnimation = true }
-        .onDisappear { appearAnimation = false }
+    }
+
+    // MARK: - Loading Layout
+
+    private var loadingBody: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Text("Loading \(appState.modelDisplayName) model...")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if appState.modelLoadProgress > 0 {
+                    Text("\(Int(appState.modelLoadProgress * 100))%")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if appState.modelLoadProgress > 0 {
+                ProgressView(value: appState.modelLoadProgress)
+                    .tint(.accentColor)
+            }
+        }
+    }
+
+    // MARK: - Recording Layout (centered waveform hero)
+
+    private var recordingBody: some View {
+        VStack(spacing: 8) {
+            WaveformView(levels: appState.audioLevels)
+                .frame(height: 40)
+
+            HStack(spacing: 8) {
+                Text(statusText)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                if let startTime = appState.recordingStartTime {
+                    RecordingTimerView(startTime: startTime)
+                }
+
+                if !appState.detectedLanguage.isEmpty {
+                    Text(appState.detectedLanguage.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.blue.opacity(0.7))
+                        )
+                }
+            }
+
+            if !appState.liveTranscriptionText.isEmpty {
+                Text(appState.liveTranscriptionText)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 380)
+            }
+        }
+    }
+
+    // MARK: - Non-recording Layout (dot + status)
+
+    private var nonRecordingBody: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 10, height: 10)
+                .shadow(color: dotColor.opacity(0.5), radius: 3)
+
+            Text(statusText)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+
+            if !appState.liveTranscriptionText.isEmpty {
+                Text(appState.liveTranscriptionText)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Helpers
@@ -109,10 +144,50 @@ struct TranscriptionOverlayView: View {
 
     private var statusText: String {
         switch appState.transcriptionState {
+        case .loading: return "Loading model..."
         case .recording: return "Listening..."
         case .transcribing: return "Transcribing..."
         case .processing: return "Processing..."
         default: return ""
+        }
+    }
+}
+
+// MARK: - Waveform View
+
+private struct WaveformView: View {
+    let levels: [Float]
+
+    private var displayLevels: [Float] {
+        if levels.count >= 50 {
+            return Array(levels.suffix(50))
+        }
+        return Array(repeating: 0, count: 50)
+    }
+
+    var body: some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<50, id: \.self) { index in
+                WaveformBar(level: CGFloat(displayLevels[index]))
+            }
+        }
+    }
+}
+
+private struct WaveformBar: View {
+    let level: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let maxHeight = geometry.size.height
+            let barHeight = max(2, maxHeight * level)
+
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.red)
+                .frame(width: geometry.size.width, height: barHeight)
+                .opacity(0.4 + 0.6 * level)
+                .position(x: geometry.size.width / 2, y: maxHeight / 2)
+                .animation(.easeOut(duration: 0.1), value: level)
         }
     }
 }

@@ -65,21 +65,35 @@ final class TranscriptionCoordinator {
         appState.lastInjectedText = nil
         undoTimer?.cancel()
 
-        // startRecording() is actor-isolated and throws, so we need try await.
-        // Since this method is synchronous, wrap in a Task.
+        // Set UI state immediately for instant visual feedback
+        appState.clearAudioLevels()
+        appState.transcriptionState = .recording
+        appState.recordingStartTime = Date()
+        appState.liveTranscriptionText = ""
+        appState.detectedLanguage = ""
+        SoundFeedbackService.shared.playStartRecording()
+
+        // Start the audio engine asynchronously (actor-isolated)
         Task { @MainActor in
             do {
                 if appState.muteWhileRecording {
                     await appState.audioMuteService.muteOutput()
                 }
                 let deviceID = appState.audioDeviceManager.resolveDeviceID(forUID: appState.selectedInputDeviceUID)
-                try await audioService.startRecording(inputDeviceID: deviceID)
-                appState.transcriptionState = .recording
-                appState.recordingStartTime = Date()
-                appState.liveTranscriptionText = ""
-                appState.detectedLanguage = ""
-                SoundFeedbackService.shared.playStartRecording()
+                let levelCallback: @Sendable (Float) -> Void = { [weak appState] level in
+                    Task { @MainActor in
+                        appState?.pushAudioLevel(level)
+                    }
+                }
+                try await audioService.startRecording(
+                    inputDeviceID: deviceID,
+                    noiseReductionEnabled: appState.noiseReductionEnabled,
+                    onAudioLevel: levelCallback
+                )
             } catch {
+                // Revert UI state if engine failed to start
+                appState.transcriptionState = .idle
+                appState.recordingStartTime = nil
                 SoundFeedbackService.shared.playError()
                 appState.showError("Failed to start recording: \(error.localizedDescription)")
             }
@@ -90,6 +104,7 @@ final class TranscriptionCoordinator {
         guard case .recording = appState.transcriptionState else { return }
 
         appState.recordingStartTime = nil
+        appState.clearAudioLevels()
         SoundFeedbackService.shared.playStopRecording()
 
         transcriptionTask = Task { @MainActor in
@@ -208,6 +223,7 @@ final class TranscriptionCoordinator {
         appState.transcriptionState = .idle
         appState.recordingStartTime = nil
         appState.liveTranscriptionText = ""
+        appState.clearAudioLevels()
     }
 
     private func parseCustomVocabulary() -> [String] {

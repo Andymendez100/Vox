@@ -38,6 +38,8 @@ final class AppState: ObservableObject {
     @Published var lastInjectedText: String?
     @Published var canUndo: Bool = false
     @Published var detectedLanguage: String = ""
+    @Published var audioLevels: [Float] = []
+    private var smoothedLevels: [Float] = Array(repeating: 0, count: 50)
 
     // MARK: - Settings (persisted)
     @AppStorage("selectedModel") var selectedModel: String = "openai_whisper-base"
@@ -56,6 +58,7 @@ final class AppState: ObservableObject {
     @AppStorage("selectedInputDeviceUID") var selectedInputDeviceUID: String = AudioDeviceManager.systemDefaultUID
     @AppStorage("soundFeedbackEnabled") var soundFeedbackEnabled: Bool = true
     @AppStorage("copyOnlyMode") var copyOnlyMode: Bool = false
+    @AppStorage("noiseReductionEnabled") var noiseReductionEnabled: Bool = false
 
     // MARK: - Services
     let modeManager = ModeManager()
@@ -98,6 +101,21 @@ final class AppState: ObservableObject {
         if recentTranscriptions.count > 10 {
             recentTranscriptions.removeLast()
         }
+    }
+
+    func pushAudioLevel(_ level: Float) {
+        // Shift left
+        smoothedLevels.removeFirst()
+        // Exponential smoothing
+        let previous = smoothedLevels.last ?? 0
+        let smoothed = previous * 0.3 + level * 0.7
+        smoothedLevels.append(smoothed)
+        audioLevels = smoothedLevels
+    }
+
+    func clearAudioLevels() {
+        smoothedLevels = Array(repeating: 0, count: 50)
+        audioLevels = []
     }
 
     func showError(_ message: String) {

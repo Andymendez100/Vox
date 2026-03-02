@@ -43,7 +43,7 @@ struct MenuBarView: View {
             }
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("SttTool")
+                Text("Vox")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                 Text(appState.transcriptionState.description)
                     .font(.system(size: 11, design: .rounded))

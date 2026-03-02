@@ -3,7 +3,7 @@ import AppKit
 import Combine
 import os.log
 
-private let logger = Logger(subsystem: "com.stttool.app", category: "AppDelegate")
+private let logger = Logger(subsystem: "com.voxapp.app", category: "AppDelegate")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -12,9 +12,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var stateObservation: AnyCancellable?
     private let overlayController = OverlayWindowController()
+    private var appNapActivity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // Disable App Nap — macOS aggressively sleeps menu bar apps, causing
+        // ~1s delay on hotkey response after idle periods.
+        appNapActivity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Hotkey listener needs immediate response"
+        )
         setupStatusItem()
         setupPopover()
         observeState()
@@ -68,6 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Pre-warm audio engine so first recording starts instantly
+        Task {
+            await AppState.shared.audioService.warmUp()
+            logger.notice("Audio engine pre-warmed")
+        }
+
         // Load model in background
         Task {
             await self.loadModel()
@@ -118,14 +132,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 state == .recording ? .systemRed : .systemBlue
             ])
             let combined = config.applying(palette)
-            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SttTool")?
+            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Vox")?
                 .withSymbolConfiguration(combined) {
                 image.isTemplate = false
                 button.image = image
             }
         } else {
             // Template mode — system handles light/dark automatically
-            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SttTool")?
+            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Vox")?
                 .withSymbolConfiguration(config) {
                 image.isTemplate = true
                 button.image = image
@@ -169,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsView = SettingsView()
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "SttTool Settings"
+        window.title = "Vox Settings"
         window.setContentSize(NSSize(width: 600, height: 500))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.center()
@@ -213,13 +227,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - State Observation
     private func observeState() {
+        // AppState is @MainActor so @Published already fires on main thread.
+        // No .receive(on:) needed — adding one would insert an extra GCD hop.
         stateObservation = AppState.shared.$transcriptionState
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.updateStatusItemIcon()
 
                 switch state {
-                case .recording, .transcribing, .processing:
+                case .loading, .recording, .transcribing, .processing:
                     self?.overlayController.show()
                 default:
                     self?.overlayController.dismiss()

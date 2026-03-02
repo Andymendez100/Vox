@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build SttTool as a proper macOS .app bundle
+# Build Vox as a proper macOS .app bundle
 # Usage: ./scripts/build-app.sh [--release]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-APP_NAME="SttTool"
+APP_NAME="Vox"
+# Swift package executable is still named SttTool
+SWIFT_EXECUTABLE="SttTool"
 BUNDLE_NAME="${APP_NAME}.app"
 BUILD_DIR="${PROJECT_DIR}/build"
 
@@ -20,11 +22,11 @@ echo "==> Building ${APP_NAME} (${BUILD_CONFIG})..."
 cd "$PROJECT_DIR"
 swift build -c "$BUILD_CONFIG"
 
-# Locate the built executable
+# Locate the built executable (Swift package target is still named SttTool)
 if [[ "$BUILD_CONFIG" == "release" ]]; then
-    EXECUTABLE="${PROJECT_DIR}/.build/release/${APP_NAME}"
+    EXECUTABLE="${PROJECT_DIR}/.build/release/${SWIFT_EXECUTABLE}"
 else
-    EXECUTABLE="${PROJECT_DIR}/.build/debug/${APP_NAME}"
+    EXECUTABLE="${PROJECT_DIR}/.build/debug/${SWIFT_EXECUTABLE}"
 fi
 
 if [[ ! -f "$EXECUTABLE" ]]; then

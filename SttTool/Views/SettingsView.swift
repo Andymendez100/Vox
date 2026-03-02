@@ -103,6 +103,11 @@ struct GeneralTab: View {
                         Text(device.name).tag(device.uid)
                     }
                 }
+
+                Toggle("Noise reduction", isOn: $appState.noiseReductionEnabled)
+                Text("Applies a noise gate to suppress low-level background noise during recording.")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
 
             Section("Behavior") {

@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 enum KeychainService {
-    private static let serviceName = "com.stttool.apikeys"
+    private static let serviceName = "com.voxapp.apikeys"
 
     static func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }

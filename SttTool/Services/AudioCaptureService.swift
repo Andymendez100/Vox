@@ -7,14 +7,35 @@ actor AudioCaptureService {
     private var audioEngine: AVAudioEngine?
     private var audioSamples: [Float] = []
     private var isRecording = false
+    private var onAudioLevel: (@Sendable (Float) -> Void)?
+    private var noiseReductionEnabled = false
 
     private let targetSampleRate: Double = 16000
     // Cap at 5 minutes to bound memory (~4.8MB at 16kHz mono float32)
     private let maxRecordingSeconds: Double = 300
+    // Noise gate threshold — RMS below this is considered background noise
+    private let noiseGateThreshold: Float = 0.015
 
-    func startRecording(inputDeviceID: AudioDeviceID? = nil) throws {
+    /// Warm up the audio subsystem so the first real recording starts instantly.
+    /// Only initializes the HAL — does NOT start the engine (which would
+    /// trigger the macOS microphone privacy indicator).
+    func warmUp() {
+        let engine = AVAudioEngine()
+        let node = engine.inputNode
+        // Touch the input node's format to force HAL initialization
+        _ = node.outputFormat(forBus: 0)
+        engine.prepare()
+    }
+
+    func startRecording(
+        inputDeviceID: AudioDeviceID? = nil,
+        noiseReductionEnabled: Bool = false,
+        onAudioLevel: (@Sendable (Float) -> Void)? = nil
+    ) throws {
         guard !isRecording else { return }
 
+        self.onAudioLevel = onAudioLevel
+        self.noiseReductionEnabled = noiseReductionEnabled
         audioSamples = []
         audioSamples.reserveCapacity(Int(targetSampleRate) * 60) // Pre-allocate 1 min
         let engine = AVAudioEngine()
@@ -72,6 +93,7 @@ actor AudioCaptureService {
         audioEngine?.stop()
         audioEngine = nil
         isRecording = false
+        onAudioLevel = nil
 
         let data = AudioData(samples: audioSamples)
         audioSamples = []
@@ -85,6 +107,8 @@ actor AudioCaptureService {
     ) {
         let maxSamples = Int(targetSampleRate * maxRecordingSeconds)
         guard audioSamples.count < maxSamples else { return }
+        var samples: [Float]?
+
         if let converter = converter {
             let frameCount = AVAudioFrameCount(
                 Double(buffer.frameLength) * targetSampleRate / buffer.format.sampleRate
@@ -102,14 +126,32 @@ actor AudioCaptureService {
 
             if error == nil, let channelData = convertedBuffer.floatChannelData {
                 let count = Int(convertedBuffer.frameLength)
-                let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
-                audioSamples.append(contentsOf: samples)
+                samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
             }
         } else {
             guard let channelData = buffer.floatChannelData else { return }
             let count = Int(buffer.frameLength)
-            let samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
-            audioSamples.append(contentsOf: samples)
+            samples = Array(UnsafeBufferPointer(start: channelData[0], count: count))
+        }
+
+        guard var extracted = samples, !extracted.isEmpty else { return }
+
+        // Compute RMS on raw input
+        let sumOfSquares = extracted.reduce(Float(0)) { $0 + $1 * $1 }
+        let rms = sqrt(sumOfSquares / Float(extracted.count))
+
+        // Noise gate: zero out samples below threshold to remove background noise
+        if noiseReductionEnabled && rms < noiseGateThreshold {
+            for i in extracted.indices { extracted[i] = 0 }
+        }
+
+        audioSamples.append(contentsOf: extracted)
+
+        // Send audio level to callback (use gated level so waveform matches output)
+        if let callback = onAudioLevel {
+            let level = (noiseReductionEnabled && rms < noiseGateThreshold) ? Float(0) : rms
+            let normalized = min(level * 5.0, 1.0)
+            callback(normalized)
         }
     }
 }

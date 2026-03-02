@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import os.log
 
-private let hotkeyLogger = Logger(subsystem: "com.stttool.app", category: "HotkeyManager")
+private let hotkeyLogger = Logger(subsystem: "com.voxapp.app", category: "HotkeyManager")
 
 final class HotkeyManager {
     static let shared = HotkeyManager()
@@ -42,7 +42,7 @@ final class HotkeyManager {
             // Keep the run loop alive
             CFRunLoopRun()
         }
-        thread.name = "com.stttool.hotkey-event-tap"
+        thread.name = "com.voxapp.hotkey-event-tap"
         thread.qualityOfService = .userInteractive
         thread.start()
         tapThread = thread
@@ -81,10 +81,17 @@ final class HotkeyManager {
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
 
+        // Use .listenOnly instead of .defaultTap. An active (default) tap
+        // blocks ALL system input if the callback thread stalls for any reason
+        // (priority inversion, memory pressure, OS scheduling). A listen-only
+        // tap observes events without blocking — the system never waits for
+        // our callback, so the app can never freeze the Mac.
+        // Trade-off: we can't consume hotkey events, so they also reach other
+        // apps. For modifier-only keys (Right Cmd) this is harmless.
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: .listenOnly,
             eventsOfInterest: eventMask,
             callback: hotkeyCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -93,7 +100,7 @@ final class HotkeyManager {
             guard let sessionTap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
-                options: .defaultTap,
+                options: .listenOnly,
                 eventsOfInterest: eventMask,
                 callback: hotkeyCallback,
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -155,13 +162,13 @@ final class HotkeyManager {
                     self?.onKeyUp?()
                 }
             }
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         let eventKeyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
         guard eventKeyCode == keyCode else {
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         let flags = event.flags
@@ -194,7 +201,7 @@ final class HotkeyManager {
             return nil
         }
 
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
     private func handleKeyComboEvent(
@@ -209,7 +216,7 @@ final class HotkeyManager {
         let requiredRelevant = requiredModifiers.intersection([.maskAlternate, .maskCommand, .maskControl, .maskShift])
 
         guard eventKeyCode == keyCode && relevantFlags == requiredRelevant else {
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         switch type {
@@ -232,7 +239,7 @@ final class HotkeyManager {
             return nil
 
         default:
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
     }
 }
@@ -251,11 +258,11 @@ private func hotkeyCallback(
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
         }
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
     guard let userInfo = userInfo else {
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
     let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
