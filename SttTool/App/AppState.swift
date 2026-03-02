@@ -48,6 +48,21 @@ final class AppState: ObservableObject {
     @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = 49
     @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 524288
 
+    // MARK: - Services
+    let permissionsService = PermissionsService()
+    let audioService = AudioCaptureService()
+    let transcriptionService = TranscriptionService()
+    let textInjectionService = TextInjectionService()
+    lazy var coordinator: TranscriptionCoordinator = {
+        TranscriptionCoordinator(
+            appState: self,
+            audioService: audioService,
+            transcriptionService: transcriptionService,
+            textInjectionService: textInjectionService,
+            permissionsService: permissionsService
+        )
+    }()
+
     // MARK: - Computed
     var modelDisplayName: String {
         switch selectedModel {

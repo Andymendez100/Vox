@@ -14,6 +14,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupPopover()
         observeState()
+
+        // Check permissions
+        AppState.shared.permissionsService.checkPermissions()
+
+        // Wire hotkey to coordinator
+        let coordinator = AppState.shared.coordinator
+        HotkeyManager.shared.onKeyDown = {
+            Task { @MainActor in
+                coordinator.handleHotkeyPressed()
+            }
+        }
+        HotkeyManager.shared.onKeyUp = {
+            Task { @MainActor in
+                coordinator.handleHotkeyReleased()
+            }
+        }
+        HotkeyManager.shared.start()
+
+        // Load model in background
+        Task {
+            await self.loadModel()
+        }
     }
 
     // MARK: - Status Item
@@ -103,6 +125,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.settingsWindow = window
+    }
+
+    // MARK: - Model Loading
+    private func loadModel() async {
+        let state = AppState.shared
+        state.transcriptionState = .loading
+
+        do {
+            try await state.transcriptionService.loadModel(state.selectedModel)
+            state.isModelLoaded = true
+            state.transcriptionState = .idle
+        } catch {
+            state.showError("Failed to load model: \(error.localizedDescription)")
+            // Try fallback to base model
+            do {
+                try await state.transcriptionService.loadModel("openai_whisper-base")
+                state.selectedModel = "openai_whisper-base"
+                state.isModelLoaded = true
+                state.transcriptionState = .idle
+            } catch {
+                state.showError("Failed to load any model")
+            }
+        }
     }
 
     // MARK: - State Observation
