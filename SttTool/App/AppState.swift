@@ -47,6 +47,7 @@ final class AppState: ObservableObject {
     @AppStorage("customModesJSON") var customModesJSON: String = "[]"
     @AppStorage("hotkeyKeyCode") var hotkeyKeyCode: Int = 49
     @AppStorage("hotkeyModifiers") var hotkeyModifiers: Int = 524288
+    @AppStorage("muteWhileRecording") var muteWhileRecording: Bool = false
 
     // MARK: - Services
     let modeManager = ModeManager()
@@ -54,6 +55,7 @@ final class AppState: ObservableObject {
     let audioService = AudioCaptureService()
     let transcriptionService = TranscriptionService()
     let textInjectionService = TextInjectionService()
+    let audioMuteService = AudioMuteService()
     lazy var coordinator: TranscriptionCoordinator = {
         TranscriptionCoordinator(
             appState: self,

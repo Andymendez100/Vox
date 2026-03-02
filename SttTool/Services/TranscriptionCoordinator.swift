@@ -50,6 +50,9 @@ final class TranscriptionCoordinator {
         // Since this method is synchronous, wrap in a Task.
         Task { @MainActor in
             do {
+                if appState.muteWhileRecording {
+                    await appState.audioMuteService.muteOutput()
+                }
                 try await audioService.startRecording()
                 appState.transcriptionState = .recording
                 appState.liveTranscriptionText = ""
@@ -67,6 +70,10 @@ final class TranscriptionCoordinator {
                 guard let audioData = await audioService.stopRecording() else {
                     appState.transcriptionState = .idle
                     return
+                }
+
+                if appState.muteWhileRecording {
+                    await appState.audioMuteService.restoreOutput()
                 }
 
                 if audioData.isTooShort {
@@ -128,6 +135,9 @@ final class TranscriptionCoordinator {
         transcriptionTask = nil
         Task {
             _ = await audioService.stopRecording()
+        }
+        if appState.muteWhileRecording {
+            Task { await appState.audioMuteService.restoreOutput() }
         }
         appState.transcriptionState = .idle
         appState.liveTranscriptionText = ""
