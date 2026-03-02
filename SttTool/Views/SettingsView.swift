@@ -38,7 +38,7 @@ struct SettingsView: View {
                     Label("Language", systemImage: "globe")
                 }
         }
-        .frame(width: 550, height: 400)
+        .frame(width: 520, height: 440)
     }
 }
 
@@ -53,7 +53,7 @@ struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Activation") {
+            Section {
                 Picker("Mode", selection: $appState.activationMode) {
                     Text("Push to Talk").tag("pushToTalk")
                     Text("Toggle").tag("toggle")
@@ -64,18 +64,36 @@ struct GeneralTab: View {
                     Button {
                         startRecordingHotkey()
                     } label: {
-                        Text(isRecordingHotkey ? "Press new hotkey..." : hotkeyDisplayString)
-                            .foregroundStyle(isRecordingHotkey ? .orange : .secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                isRecordingHotkey ? Color.orange.opacity(0.15) : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 6)
-                            )
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        HStack(spacing: 6) {
+                            if isRecordingHotkey {
+                                Circle()
+                                    .fill(.orange)
+                                    .frame(width: 6, height: 6)
+                                Text("Press new hotkey...")
+                                    .font(.system(size: 12, design: .rounded))
+                                    .foregroundStyle(.orange)
+                            } else {
+                                Text(hotkeyDisplayString)
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isRecordingHotkey ? Color.orange.opacity(0.1) : Color.primary.opacity(0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(isRecordingHotkey ? Color.orange.opacity(0.4) : Color.primary.opacity(0.1), lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isRecordingHotkey)
                 }
+            } header: {
+                Text("Activation")
             }
 
             Section("Audio Input") {
@@ -92,51 +110,18 @@ struct GeneralTab: View {
             }
 
             Section("Permissions") {
-                HStack {
-                    Label {
-                        Text("Microphone")
-                    } icon: {
-                        Image(systemName: permissions.microphoneGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(permissions.microphoneGranted ? .green : .red)
-                    }
-                    Spacer()
-                    if !permissions.microphoneGranted {
-                        Button("Grant Access") {
-                            permissions.checkMicrophone()
-                        }
-                        .controlSize(.small)
-                        Button("Open Settings") {
-                            permissions.openMicrophoneSettings()
-                        }
-                        .controlSize(.small)
-                    } else {
-                        Text("Granted")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                HStack {
-                    Label {
-                        Text("Accessibility")
-                    } icon: {
-                        Image(systemName: permissions.accessibilityGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(permissions.accessibilityGranted ? .green : .red)
-                    }
-                    Spacer()
-                    if !permissions.accessibilityGranted {
-                        Button("Grant Access") {
-                            permissions.requestAccessibility()
-                        }
-                        .controlSize(.small)
-                        Button("Open Settings") {
-                            permissions.openAccessibilitySettings()
-                        }
-                        .controlSize(.small)
-                    } else {
-                        Text("Granted")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                permissionRow(
+                    name: "Microphone",
+                    granted: permissions.microphoneGranted,
+                    onGrant: { permissions.checkMicrophone() },
+                    onOpen: { permissions.openMicrophoneSettings() }
+                )
+                permissionRow(
+                    name: "Accessibility",
+                    granted: permissions.accessibilityGranted,
+                    onGrant: { permissions.requestAccessibility() },
+                    onOpen: { permissions.openAccessibilitySettings() }
+                )
             }
         }
         .formStyle(.grouped)
@@ -144,6 +129,31 @@ struct GeneralTab: View {
             permissions.checkPermissions()
         }
     }
+
+    private func permissionRow(name: String, granted: Bool, onGrant: @escaping () -> Void, onOpen: @escaping () -> Void) -> some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: granted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(granted ? .green : .red)
+                    .font(.system(size: 14))
+                Text(name)
+                    .font(.system(.body, design: .rounded))
+            }
+            Spacer()
+            if granted {
+                Text("Granted")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.green.opacity(0.8))
+            } else {
+                Button("Grant") { onGrant() }
+                    .controlSize(.small)
+                Button("Settings") { onOpen() }
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    // MARK: - Hotkey Display
 
     private var hotkeyDisplayString: String {
         if appState.hotkeyModifierOnly {
@@ -193,23 +203,16 @@ struct GeneralTab: View {
         return names[keyCode] ?? "Key \(keyCode)"
     }
 
+    // MARK: - Hotkey Recording
+
     private func startRecordingHotkey() {
         guard !isRecordingHotkey else { return }
         isRecordingHotkey = true
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             if event.type == .flagsChanged {
-                // Only trigger on modifier press (not release)
-                let modifierKeyCodes: Set<UInt16> = [
-                    54, 55, // Right/Left Command
-                    56, 60, // Left/Right Shift
-                    58, 61, // Left/Right Option
-                    59, 62, // Left/Right Control
-                ]
-                guard modifierKeyCodes.contains(event.keyCode) else {
-                    return event
-                }
-                // Check if this is a press (modifier flag present) not a release
+                let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 60, 58, 61, 59, 62]
+                guard modifierKeyCodes.contains(event.keyCode) else { return event }
                 let hasModifier: Bool
                 switch event.keyCode {
                 case 54, 55: hasModifier = event.modifierFlags.contains(.command)
@@ -219,7 +222,6 @@ struct GeneralTab: View {
                 default: hasModifier = false
                 }
                 guard hasModifier else { return event }
-
                 self.applyHotkey(
                     keyCode: event.keyCode,
                     modifiers: CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)),
@@ -227,7 +229,6 @@ struct GeneralTab: View {
                 )
                 return nil
             } else {
-                // keyDown: key combo or standalone key
                 let cgModifiers = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
                 let hasModifiers = !event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
                 self.applyHotkey(
@@ -246,13 +247,9 @@ struct GeneralTab: View {
             eventMonitor = nil
         }
         isRecordingHotkey = false
-
-        // Update HotkeyManager
         HotkeyManager.shared.setHotkey(keyCode: keyCode, modifiers: modifiers, modifierOnly: modifierOnly)
         HotkeyManager.shared.stop()
         HotkeyManager.shared.start()
-
-        // Keep AppState in sync
         appState.hotkeyKeyCode = Int(keyCode)
         appState.hotkeyModifiers = Int(modifiers.rawValue)
         appState.hotkeyModifierOnly = modifierOnly
@@ -292,13 +289,14 @@ struct ModelsTab: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Loading model...")
+                            .font(.system(.body, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if let desc = selectedModelDescription {
                     Text(desc)
-                        .font(.caption)
+                        .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -336,26 +334,7 @@ struct ModesTab: View {
 
             Section("Built-in Modes") {
                 ForEach(TranscriptionMode.allBuiltIn) { mode in
-                    HStack {
-                        Text(mode.name)
-                            .fontWeight(.medium)
-                        Spacer()
-                        if !mode.systemPrompt.isEmpty {
-                            Text("LLM")
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.blue.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.blue)
-                        } else {
-                            Text("Direct")
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.gray.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    BuiltInModeRow(mode: mode)
                 }
             }
 
@@ -368,7 +347,8 @@ struct ModesTab: View {
                             modeManager.removeCustomMode(id: mode.id)
                         } label: {
                             Image(systemName: "trash")
-                                .foregroundStyle(.red)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.red.opacity(0.7))
                         }
                         .buttonStyle(.plain)
                     }
@@ -376,6 +356,7 @@ struct ModesTab: View {
 
                 if modeManager.customModes.isEmpty {
                     Text("No custom modes yet")
+                        .font(.system(.body, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
 
@@ -412,8 +393,8 @@ struct ModesTab: View {
 
             Section {
                 Toggle("Super Mode", isOn: $appState.superModeEnabled)
-                Text("Automatically selects the best mode based on the active application. For example, uses Message mode in Slack and Email mode in Mail.")
-                    .font(.caption)
+                Text("Automatically selects the best mode based on the active application.")
+                    .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Super Mode")
@@ -445,75 +426,31 @@ struct APIKeysTab: View {
             }
 
             Section("OpenAI") {
-                HStack {
-                    if showOpenAIKey {
-                        TextField("sk-...", text: $openaiKey)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        SecureField("sk-...", text: $openaiKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    Button {
-                        showOpenAIKey.toggle()
-                    } label: {
-                        Image(systemName: showOpenAIKey ? "eye.slash" : "eye")
-                    }
-                    .buttonStyle(.plain)
-                }
-
+                apiKeyField(
+                    placeholder: "sk-...",
+                    key: $openaiKey,
+                    showKey: $showOpenAIKey
+                )
                 TextField("Model name", text: $modeManager.openaiModel)
                     .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button("Save Key") {
-                        KeychainService.save(key: "openai_api_key", value: openaiKey)
-                        showSaved("OpenAI")
-                    }
-                    .disabled(openaiKey.isEmpty)
-
-                    if savedIndicator == "OpenAI" {
-                        Text("Saved")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                            .transition(.opacity)
-                    }
+                saveButton(provider: "OpenAI") {
+                    KeychainService.save(key: "openai_api_key", value: openaiKey)
                 }
+                .disabled(openaiKey.isEmpty)
             }
 
             Section("Anthropic") {
-                HStack {
-                    if showAnthropicKey {
-                        TextField("sk-ant-...", text: $anthropicKey)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        SecureField("sk-ant-...", text: $anthropicKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    Button {
-                        showAnthropicKey.toggle()
-                    } label: {
-                        Image(systemName: showAnthropicKey ? "eye.slash" : "eye")
-                    }
-                    .buttonStyle(.plain)
-                }
-
+                apiKeyField(
+                    placeholder: "sk-ant-...",
+                    key: $anthropicKey,
+                    showKey: $showAnthropicKey
+                )
                 TextField("Model name", text: $modeManager.anthropicModel)
                     .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button("Save Key") {
-                        KeychainService.save(key: "anthropic_api_key", value: anthropicKey)
-                        showSaved("Anthropic")
-                    }
-                    .disabled(anthropicKey.isEmpty)
-
-                    if savedIndicator == "Anthropic" {
-                        Text("Saved")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                            .transition(.opacity)
-                    }
+                saveButton(provider: "Anthropic") {
+                    KeychainService.save(key: "anthropic_api_key", value: anthropicKey)
                 }
+                .disabled(anthropicKey.isEmpty)
             }
         }
         .formStyle(.grouped)
@@ -523,15 +460,53 @@ struct APIKeysTab: View {
         }
     }
 
-    private func showSaved(_ provider: String) {
-        withAnimation {
-            savedIndicator = provider
+    private func apiKeyField(placeholder: String, key: Binding<String>, showKey: Binding<Bool>) -> some View {
+        HStack {
+            Group {
+                if showKey.wrappedValue {
+                    TextField(placeholder, text: key)
+                } else {
+                    SecureField(placeholder, text: key)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+
+            Button {
+                showKey.wrappedValue.toggle()
+            } label: {
+                Image(systemName: showKey.wrappedValue ? "eye.slash" : "eye")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
         }
+    }
+
+    private func saveButton(provider: String, action: @escaping () -> Void) -> some View {
+        HStack {
+            Button("Save Key") {
+                action()
+                showSaved(provider)
+            }
+
+            if savedIndicator == provider {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Saved")
+                        .font(.system(size: 12, design: .rounded))
+                }
+                .foregroundStyle(.green)
+                .transition(.opacity)
+            }
+        }
+    }
+
+    private func showSaved(_ provider: String) {
+        withAnimation { savedIndicator = provider }
         Task {
             try? await Task.sleep(for: .seconds(2))
-            withAnimation {
-                savedIndicator = nil
-            }
+            withAnimation { savedIndicator = nil }
         }
     }
 }
@@ -546,8 +521,8 @@ struct VocabularyTab: View {
     var body: some View {
         Form {
             Section {
-                Text("Add specialized words, names, or technical terms to improve transcription accuracy. These words are used as hints for the Whisper model.")
-                    .font(.caption)
+                Text("Add specialized words, names, or technical terms to improve transcription accuracy.")
+                    .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
@@ -555,12 +530,14 @@ struct VocabularyTab: View {
                 ForEach(words, id: \.self) { word in
                     HStack {
                         Text(word)
+                            .font(.system(.body, design: .rounded))
                         Spacer()
                         Button(role: .destructive) {
                             removeWord(word)
                         } label: {
                             Image(systemName: "minus.circle.fill")
-                                .foregroundStyle(.red)
+                                .font(.system(size: 14))
+                                .foregroundStyle(.red.opacity(0.7))
                         }
                         .buttonStyle(.plain)
                     }
@@ -568,19 +545,20 @@ struct VocabularyTab: View {
 
                 if words.isEmpty {
                     Text("No custom vocabulary words")
+                        .font(.system(.body, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
 
                 HStack {
                     TextField("Add word or phrase", text: $newWord)
                         .textFieldStyle(.roundedBorder)
-                        .onSubmit {
-                            addWord()
-                        }
+                        .onSubmit { addWord() }
                     Button {
                         addWord()
                     } label: {
                         Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.accentColor)
                     }
                     .buttonStyle(.plain)
                     .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -588,9 +566,7 @@ struct VocabularyTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            loadWords()
-        }
+        .onAppear { loadWords() }
     }
 
     private func loadWords() {
@@ -663,8 +639,8 @@ struct LanguageTab: View {
         Form {
             Section("Detection") {
                 Toggle("Auto-detect language", isOn: $appState.autoDetectLanguage)
-                Text("When enabled, Whisper will attempt to identify the spoken language automatically. This may slightly increase processing time.")
-                    .font(.caption)
+                Text("Whisper will identify the spoken language automatically. May slightly increase processing time.")
+                    .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
@@ -678,11 +654,40 @@ struct LanguageTab: View {
 
                 if appState.autoDetectLanguage {
                     Text("Language selection is disabled while auto-detect is on.")
-                        .font(.caption)
+                        .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Built-in Mode Row
+
+private struct BuiltInModeRow: View {
+    let mode: TranscriptionMode
+
+    var body: some View {
+        HStack {
+            Text(mode.name)
+                .fontWeight(.medium)
+            Spacer()
+            if mode.systemPrompt.isEmpty {
+                Text("Direct")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+            } else {
+                Text("LLM")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.blue.opacity(0.1)))
+            }
+        }
     }
 }

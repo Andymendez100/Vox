@@ -68,11 +68,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await self.loadModel()
         }
+
+        // Open settings on launch
+        openSettings()
     }
 
     // MARK: - Status Item
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         updateStatusItemIcon()
 
         if let button = statusItem.button {
@@ -86,31 +89,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let state = AppState.shared.transcriptionState
 
         let iconName: String
-        let color: NSColor
+        let useColor: Bool
 
         switch state {
-        case .idle:
-            iconName = "mic.fill"
-            color = AppState.shared.isModelLoaded ? .secondaryLabelColor : .systemYellow
-        case .loading:
-            iconName = "mic.fill"
-            color = .systemYellow
+        case .idle where AppState.shared.isModelLoaded:
+            iconName = "waveform"
+            useColor = false
+        case .idle, .loading:
+            iconName = "waveform.badge.exclamationmark"
+            useColor = false
         case .recording:
-            iconName = "mic.fill"
-            color = .systemRed
+            iconName = "waveform.circle.fill"
+            useColor = true
         case .transcribing, .processing:
-            iconName = "mic.fill"
-            color = .systemBlue
+            iconName = "waveform.circle"
+            useColor = true
         case .error:
-            iconName = "mic.slash.fill"
-            color = .systemOrange
+            iconName = "waveform.slash"
+            useColor = false
         }
 
-        if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SttTool") {
-            let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-            let configured = image.withSymbolConfiguration(config) ?? image
-            button.image = configured
-            button.contentTintColor = color
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        if useColor {
+            // Non-template so the tint color actually shows
+            let palette = NSImage.SymbolConfiguration(paletteColors: [
+                state == .recording ? .systemRed : .systemBlue
+            ])
+            let combined = config.applying(palette)
+            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SttTool")?
+                .withSymbolConfiguration(combined) {
+                image.isTemplate = false
+                button.image = image
+            }
+        } else {
+            // Template mode — system handles light/dark automatically
+            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SttTool")?
+                .withSymbolConfiguration(config) {
+                image.isTemplate = true
+                button.image = image
+            }
         }
     }
 

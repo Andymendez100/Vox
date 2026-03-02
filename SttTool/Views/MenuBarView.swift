@@ -10,39 +10,60 @@ struct MenuBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerSection
-            Divider().padding(.horizontal, 16)
-            modeSelectorSection
-            Divider().padding(.horizontal, 16)
-            recentTranscriptionsSection
-            Divider().padding(.horizontal, 16)
+            divider
+            statusSection
+            divider
+            modeSection
+            divider
+            transcriptionsSection
+            divider
             footerSection
         }
         .frame(width: 320)
-        .background(.ultraThinMaterial)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 1)
+            .padding(.horizontal, 12)
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
         HStack(spacing: 10) {
-            statusDot
-            Text("SttTool")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.15))
+                    .frame(width: 28, height: 28)
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("SttTool")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                Text(appState.transcriptionState.description)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
 
-            modelBadge
+            Text(appState.modelDisplayName)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(Color.primary.opacity(0.06))
+                )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-    }
-
-    private var statusDot: some View {
-        Circle()
-            .fill(statusColor)
-            .frame(width: 8, height: 8)
-            .shadow(color: statusColor.opacity(0.5), radius: 3, x: 0, y: 0)
     }
 
     private var statusColor: Color {
@@ -60,38 +81,76 @@ struct MenuBarView: View {
         }
     }
 
-    private var modelBadge: some View {
-        Text(appState.modelDisplayName)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(Color.primary.opacity(0.06))
-            )
+    // MARK: - Status
+
+    private var statusSection: some View {
+        Group {
+            if appState.transcriptionState == .loading {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading model...")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            } else if case .error(let msg) = appState.transcriptionState {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 12))
+                    Text(msg)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            } else {
+                EmptyView()
+            }
+        }
     }
 
     // MARK: - Mode Selector
 
-    private var modeSelectorSection: some View {
-        VStack(spacing: 10) {
-            modesPicker
-            superModeToggle
+    private var modeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("MODE")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .tracking(0.8)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(modeManager.allModes) { mode in
+                        modePill(mode)
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11))
+                    .foregroundStyle(appState.superModeEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+
+                Text("Auto-select mode")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Toggle("", isOn: $appState.superModeEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-    }
-
-    private var modesPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(modeManager.allModes) { mode in
-                    modePill(mode)
-                }
-            }
-            .padding(.horizontal, 2)
-        }
     }
 
     private func modePill(_ mode: TranscriptionMode) -> some View {
@@ -102,10 +161,10 @@ struct MenuBarView: View {
             }
         } label: {
             Text(mode.name)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .rounded))
                 .foregroundStyle(isSelected ? .white : .secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
                 .background(
                     Capsule()
                         .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.05))
@@ -114,128 +173,95 @@ struct MenuBarView: View {
         .buttonStyle(.plain)
     }
 
-    private var superModeToggle: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 11))
-                .foregroundStyle(appState.superModeEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
-
-            Text("Super Mode")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Toggle("", isOn: $appState.superModeEnabled)
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-        }
-    }
-
     // MARK: - Recent Transcriptions
 
-    private var recentTranscriptionsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var transcriptionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("RECENT")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .tracking(0.8)
+                .padding(.horizontal, 16)
+
             if appState.recentTranscriptions.isEmpty {
-                emptyTranscriptionsView
+                emptyState
             } else {
                 transcriptionsList
             }
         }
         .frame(maxHeight: 200)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
     }
 
-    private var emptyTranscriptionsView: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 20))
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "waveform")
+                .font(.system(size: 24, weight: .light))
                 .foregroundStyle(.quaternary)
             Text("No transcriptions yet")
-                .font(.system(size: 12))
+                .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(.tertiary)
-            Text(statusHint)
-                .font(.system(size: 11))
-                .foregroundStyle(.quaternary)
-                .multilineTextAlignment(.center)
+            if appState.isModelLoaded {
+                Text("Hold your hotkey to start")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.quaternary)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-    }
-
-    private var statusHint: String {
-        switch appState.transcriptionState {
-        case .idle where appState.isModelLoaded:
-            return "Hold your hotkey to start"
-        case .loading:
-            return "Model is loading..."
-        case .recording:
-            return "Listening..."
-        case .error(let msg):
-            return msg
-        default:
-            return "Waiting for model..."
-        }
+        .padding(.vertical, 16)
     }
 
     private var transcriptionsList: some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 2) {
-                ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.offset) { index, text in
-                    TranscriptionRow(text: text, index: index)
+                ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.offset) { _, text in
+                    TranscriptionRow(text: text)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 12)
         }
     }
 
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack {
-            Button {
+        HStack(spacing: 0) {
+            footerButton(icon: "gear", label: "Settings") {
                 onOpenSettings()
-            } label: {
-                Label("Settings", systemImage: "gear")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
             }
 
             Spacer()
 
-            Text(appState.transcriptionState.description)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-
-            Spacer()
-
-            Button {
+            footerButton(icon: "power", label: "Quit") {
                 onQuit()
-            } label: {
-                Label("Quit", systemImage: "power")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func footerButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 12, design: .rounded))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.001))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() }
+            else { NSCursor.pop() }
+        }
     }
 }
 
@@ -243,7 +269,6 @@ struct MenuBarView: View {
 
 private struct TranscriptionRow: View {
     let text: String
-    let index: Int
 
     @State private var isHovered = false
     @State private var showCopied = false
@@ -254,7 +279,7 @@ private struct TranscriptionRow: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 Text(text)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.85))
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
@@ -262,7 +287,7 @@ private struct TranscriptionRow: View {
 
                 if showCopied {
                     Text("Copied")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(.green)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 } else if isHovered {
@@ -275,7 +300,7 @@ private struct TranscriptionRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.primary.opacity(0.04) : Color.clear)
             )
         }
