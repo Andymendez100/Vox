@@ -87,15 +87,17 @@ final class ModeManager: ObservableObject {
     private func saveCustomModes() {
         if let data = try? JSONEncoder().encode(customModes),
            let json = String(data: data, encoding: .utf8) {
-            AppState.shared.customModesJSON = json
+            UserDefaults.standard.set(json, forKey: "customModesJSON")
         }
     }
 
     private func loadCustomModes() {
-        if let data = AppState.shared.customModesJSON.data(using: .utf8),
-           let modes = try? JSONDecoder().decode([TranscriptionMode].self, from: data) {
-            customModes = modes
-            allModes = TranscriptionMode.allBuiltIn + modes
+        guard let json = UserDefaults.standard.string(forKey: "customModesJSON"),
+              let data = json.data(using: .utf8),
+              let modes = try? JSONDecoder().decode([TranscriptionMode].self, from: data) else {
+            return
         }
+        customModes = modes
+        allModes = TranscriptionMode.allBuiltIn + modes
     }
 }
