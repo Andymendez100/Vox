@@ -13,28 +13,70 @@ final class HotkeyManager {
 
     fileprivate var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var tapThread: Thread?
+    private var tapRunLoop: CFRunLoop?
 
     // Hotkey configuration
-    // For modifier-only hotkeys (e.g., Right Command), keyCode is the modifier key code
-    // and useModifierOnly is true.
-    // For key+modifier combos (e.g., Option+Space), keyCode is the key and
-    // requiredModifiers is the modifier mask.
     private var keyCode: UInt16 = 54 // Right Command
-    private var requiredModifiers: CGEventFlags = [] // No additional modifiers needed
-    private var useModifierOnly: Bool = true // True = trigger on modifier key press/release
+    private var requiredModifiers: CGEventFlags = []
+    private var useModifierOnly: Bool = true
 
     private var isKeyDown = false
 
-    // Right Command keycode
     static let rightCommandKeyCode: UInt16 = 54
     static let leftCommandKeyCode: UInt16 = 55
 
     private init() {}
 
     func start() {
+        stop()
         loadSavedHotkey()
         hotkeyLogger.notice("keyCode=\(self.keyCode), modifierOnly=\(self.useModifierOnly), modifiers=\(self.requiredModifiers.rawValue)")
 
+        // Run the event tap on a dedicated background thread so the main
+        // thread's busyness (model loading, transcription, SwiftUI) can never
+        // block event processing and freeze the system.
+        let thread = Thread { [weak self] in
+            guard let self else { return }
+            self.startTapOnCurrentThread()
+            // Keep the run loop alive
+            CFRunLoopRun()
+        }
+        thread.name = "com.stttool.hotkey-event-tap"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        tapThread = thread
+    }
+
+    func stop() {
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let rl = tapRunLoop {
+            if let source = runLoopSource {
+                CFRunLoopRemoveSource(rl, source, .commonModes)
+            }
+            CFRunLoopStop(rl)
+        }
+        eventTap = nil
+        runLoopSource = nil
+        tapRunLoop = nil
+        tapThread = nil
+        isKeyDown = false
+    }
+
+    func setHotkey(keyCode: UInt16, modifiers: CGEventFlags, modifierOnly: Bool = false) {
+        self.keyCode = keyCode
+        self.requiredModifiers = modifiers
+        self.useModifierOnly = modifierOnly
+        UserDefaults.standard.set(Int(keyCode), forKey: "hotkeyKeyCode")
+        UserDefaults.standard.set(Int(modifiers.rawValue), forKey: "hotkeyModifiers")
+        UserDefaults.standard.set(modifierOnly, forKey: "hotkeyModifierOnly")
+    }
+
+    // MARK: - Private
+
+    private func startTapOnCurrentThread() {
         let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
@@ -60,40 +102,20 @@ final class HotkeyManager {
                 return
             }
             hotkeyLogger.notice("Using cgSessionEventTap (fallback)")
-            setupRunLoop(with: sessionTap)
+            installTap(sessionTap)
             return
         }
-        hotkeyLogger.notice("Event tap created successfully (cghidEventTap)")
-        setupRunLoop(with: tap)
+        hotkeyLogger.notice("Event tap created on dedicated thread (cghidEventTap)")
+        installTap(tap)
     }
 
-    func stop() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
-    }
-
-    func setHotkey(keyCode: UInt16, modifiers: CGEventFlags, modifierOnly: Bool = false) {
-        self.keyCode = keyCode
-        self.requiredModifiers = modifiers
-        self.useModifierOnly = modifierOnly
-        UserDefaults.standard.set(Int(keyCode), forKey: "hotkeyKeyCode")
-        UserDefaults.standard.set(Int(modifiers.rawValue), forKey: "hotkeyModifiers")
-        UserDefaults.standard.set(modifierOnly, forKey: "hotkeyModifierOnly")
-    }
-
-    // MARK: - Private
-
-    private func setupRunLoop(with tap: CFMachPort) {
+    private func installTap(_ tap: CFMachPort) {
         self.eventTap = tap
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        let rl = CFRunLoopGetCurrent()!
+        self.tapRunLoop = rl
+        CFRunLoopAddSource(rl, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
@@ -107,7 +129,6 @@ final class HotkeyManager {
             requiredModifiers = CGEventFlags(rawValue: UInt64(savedModifiers))
             useModifierOnly = savedModifierOnly
         }
-        // else keep defaults (Right Command, modifier-only)
     }
 
     fileprivate func handleEvent(
@@ -122,14 +143,12 @@ final class HotkeyManager {
         }
     }
 
-    // Handle modifier-only hotkeys (e.g., Right Command)
     private func handleModifierOnlyEvent(
         _ proxy: CGEventTapProxy,
         _ type: CGEventType,
         _ event: CGEvent
     ) -> Unmanaged<CGEvent>? {
         guard type == .flagsChanged else {
-            // If a regular key is pressed while our modifier is held, cancel
             if isKeyDown && (type == .keyDown) {
                 isKeyDown = false
                 DispatchQueue.main.async { [weak self] in
@@ -147,7 +166,6 @@ final class HotkeyManager {
 
         let flags = event.flags
 
-        // Check if our modifier is now pressed or released
         let isModifierPressed: Bool
         switch keyCode {
         case HotkeyManager.rightCommandKeyCode, HotkeyManager.leftCommandKeyCode:
@@ -167,19 +185,18 @@ final class HotkeyManager {
             DispatchQueue.main.async { [weak self] in
                 self?.onKeyDown?()
             }
-            return nil // Swallow
+            return nil
         } else if !isModifierPressed && isKeyDown {
             isKeyDown = false
             DispatchQueue.main.async { [weak self] in
                 self?.onKeyUp?()
             }
-            return nil // Swallow
+            return nil
         }
 
         return Unmanaged.passRetained(event)
     }
 
-    // Handle key+modifier combos (e.g., Option+Space)
     private func handleKeyComboEvent(
         _ proxy: CGEventTapProxy,
         _ type: CGEventType,
@@ -230,6 +247,7 @@ private func hotkeyCallback(
         if let userInfo = userInfo {
             let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
             if let tap = manager.eventTap {
+                hotkeyLogger.warning("Event tap was disabled, re-enabling...")
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
         }
