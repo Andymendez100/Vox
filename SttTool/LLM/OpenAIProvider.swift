@@ -24,7 +24,7 @@ struct OpenAIProvider: LLMProvider {
             "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": text]
+                ["role": "user", "content": "[Transcription to format]:\n\(text)"]
             ],
             "temperature": 0.3,
             "max_tokens": 2048

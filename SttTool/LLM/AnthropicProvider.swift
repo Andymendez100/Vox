@@ -26,7 +26,7 @@ struct AnthropicProvider: LLMProvider {
             "max_tokens": 2048,
             "system": systemPrompt,
             "messages": [
-                ["role": "user", "content": text]
+                ["role": "user", "content": "[Transcription to format]:\n\(text)"]
             ]
         ]
 

@@ -4,7 +4,7 @@ struct GeminiProvider: LLMProvider {
     let model: String
     let apiKey: String
 
-    init(model: String = "gemini-2.0-flash", apiKey: String? = nil) {
+    init(model: String = "gemini-2.5-flash", apiKey: String? = nil) {
         self.model = model
         self.apiKey = apiKey ?? KeychainService.get(key: "gemini_api_key") ?? ""
     }
@@ -25,7 +25,10 @@ struct GeminiProvider: LLMProvider {
                 "parts": [["text": systemPrompt]]
             ],
             "contents": [
-                ["parts": [["text": text]]]
+                [
+                    "role": "user",
+                    "parts": [["text": "[Transcription to format]:\n\(text)"]]
+                ]
             ],
             "generationConfig": [
                 "temperature": 0.3,

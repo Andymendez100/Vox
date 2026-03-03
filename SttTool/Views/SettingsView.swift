@@ -659,10 +659,19 @@ private struct APIKeysTabContent: View {
                     key: $openaiKey,
                     showKey: $showOpenAIKey
                 )
-                SettingsRow(label: "Model name") {
-                    TextField("", text: $modeManager.openaiModel)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200)
+                SettingsRow(label: "Model") {
+                    Picker("", selection: $modeManager.openaiModel) {
+                        Text("gpt-5-nano").tag("gpt-5-nano")
+                        Text("gpt-5-mini").tag("gpt-5-mini")
+                        Text("gpt-5").tag("gpt-5")
+                        Text("gpt-5.2").tag("gpt-5.2")
+                        Text("gpt-4.1").tag("gpt-4.1")
+                        Text("gpt-4o-mini").tag("gpt-4o-mini")
+                        Text("gpt-4o").tag("gpt-4o")
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
                 saveButton(provider: "OpenAI") {
                     KeychainService.save(key: "openai_api_key", value: openaiKey)
@@ -679,10 +688,16 @@ private struct APIKeysTabContent: View {
                     key: $anthropicKey,
                     showKey: $showAnthropicKey
                 )
-                SettingsRow(label: "Model name") {
-                    TextField("", text: $modeManager.anthropicModel)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200)
+                SettingsRow(label: "Model") {
+                    Picker("", selection: $modeManager.anthropicModel) {
+                        Text("claude-haiku-4-5").tag("claude-haiku-4-5-20251001")
+                        Text("claude-sonnet-4-6").tag("claude-sonnet-4-6")
+                        Text("claude-opus-4-6").tag("claude-opus-4-6")
+                        Text("claude-sonnet-4-5").tag("claude-sonnet-4-5-20250929")
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
                 saveButton(provider: "Anthropic") {
                     KeychainService.save(key: "anthropic_api_key", value: anthropicKey)
@@ -699,10 +714,18 @@ private struct APIKeysTabContent: View {
                     key: $geminiKey,
                     showKey: $showGeminiKey
                 )
-                SettingsRow(label: "Model name") {
-                    TextField("", text: $modeManager.geminiModel)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200)
+                SettingsRow(label: "Model") {
+                    Picker("", selection: $modeManager.geminiModel) {
+                        Text("gemini-3.1-pro-preview").tag("gemini-3.1-pro-preview")
+                        Text("gemini-3-flash-preview").tag("gemini-3-flash-preview")
+                        Text("gemini-3.1-flash-lite-preview").tag("gemini-3.1-flash-lite-preview")
+                        Text("gemini-2.5-flash").tag("gemini-2.5-flash")
+                        Text("gemini-2.5-flash-lite").tag("gemini-2.5-flash-lite")
+                        Text("gemini-2.5-pro").tag("gemini-2.5-pro")
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
                 saveButton(provider: "Gemini") {
                     KeychainService.save(key: "gemini_api_key", value: geminiKey)
