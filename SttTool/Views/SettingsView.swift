@@ -103,6 +103,10 @@ struct GeneralTab: View {
                         Text(device.name).tag(device.uid)
                     }
                 }
+                .onChange(of: appState.selectedInputDeviceUID) { _, newUID in
+                    deviceManager.preferredInputUID = newUID
+                    deviceManager.enforcePreferredInput()
+                }
 
                 Toggle("Noise reduction", isOn: $appState.noiseReductionEnabled)
                 Text("Applies a noise gate to suppress low-level background noise during recording.")

@@ -76,6 +76,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Enforce the user's preferred input device at startup. When Bluetooth
+        // reconnects after sleep, macOS switches the system input to the headset,
+        // which blocks the built-in mic. Doing this early gives the Bluetooth
+        // stack time to switch from HFP to A2DP before the user records.
+        let deviceManager = AppState.shared.audioDeviceManager
+        deviceManager.preferredInputUID = AppState.shared.selectedInputDeviceUID
+        deviceManager.enforcePreferredInput()
+
         // Pre-warm audio engine so first recording starts instantly
         Task {
             await AppState.shared.audioService.warmUp()

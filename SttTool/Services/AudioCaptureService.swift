@@ -1,7 +1,9 @@
 import AVFoundation
-import AudioToolbox
 import CoreAudio
 import Foundation
+import os.log
+
+private let audioLogger = Logger(subsystem: "com.voxapp.app", category: "AudioCapture")
 
 actor AudioCaptureService {
     private var audioEngine: AVAudioEngine?
@@ -28,7 +30,6 @@ actor AudioCaptureService {
     }
 
     func startRecording(
-        inputDeviceID: AudioDeviceID? = nil,
         noiseReductionEnabled: Bool = false,
         onAudioLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
@@ -37,24 +38,27 @@ actor AudioCaptureService {
         self.onAudioLevel = onAudioLevel
         self.noiseReductionEnabled = noiseReductionEnabled
         audioSamples = []
+        bufferCount = 0
         audioSamples.reserveCapacity(Int(targetSampleRate) * 60) // Pre-allocate 1 min
+
+        // AudioDeviceManager enforces the system default input device
+        // proactively (at startup and on device changes). AVAudioEngine picks
+        // up the system default automatically. We intentionally do NOT call
+        // AudioUnitSetProperty here — doing so can break the audio tap when
+        // setting the same device that's already the system default (CoreAudio
+        // quirk that causes 0 buffers to be delivered).
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        audioLogger.notice("Input format: rate=\(inputFormat.sampleRate) ch=\(inputFormat.channelCount)")
 
-        // Set specific input device if requested
-        if let deviceID = inputDeviceID, let audioUnit = inputNode.audioUnit {
-            var id = deviceID
-            AudioUnitSetProperty(
-                audioUnit,
-                kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global,
-                0,
-                &id,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
+        // Validate format — a 0 sample rate means the device is in a bad state
+        guard inputFormat.sampleRate > 0 && inputFormat.channelCount > 0 else {
+            audioLogger.error("Invalid input format: rate=\(inputFormat.sampleRate) ch=\(inputFormat.channelCount)")
+            throw AudioError.recordingFailed(
+                "Microphone returned invalid audio format. The device may be in a bad state — try disconnecting and reconnecting it."
             )
         }
-
-        let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -89,22 +93,29 @@ actor AudioCaptureService {
     func stopRecording() -> AudioData? {
         guard isRecording else { return nil }
 
+        audioLogger.notice("Stopping recording: \(self.audioSamples.count) samples, \(self.bufferCount) buffers received")
+
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
         isRecording = false
         onAudioLevel = nil
+        bufferCount = 0
 
         let data = AudioData(samples: audioSamples)
         audioSamples = []
         return data
     }
 
+    private var bufferCount = 0
+
     private func processBuffer(
         _ buffer: AVAudioPCMBuffer,
         converter: AVAudioConverter?,
         targetFormat: AVAudioFormat
     ) {
+        bufferCount += 1
+
         let maxSamples = Int(targetSampleRate * maxRecordingSeconds)
         guard audioSamples.count < maxSamples else { return }
         var samples: [Float]?

@@ -1,5 +1,8 @@
 import CoreAudio
 import Foundation
+import os.log
+
+private let deviceLogger = Logger(subsystem: "com.voxapp.app", category: "AudioDevice")
 
 struct AudioInputDevice: Identifiable, Hashable {
     let id: AudioDeviceID
@@ -13,27 +16,46 @@ final class AudioDeviceManager: ObservableObject {
 
     @Published var inputDevices: [AudioInputDevice] = []
 
-    private var listenerBlock: AudioObjectPropertyListenerBlock?
+    private var deviceListenerBlock: AudioObjectPropertyListenerBlock?
+    private var defaultInputListenerBlock: AudioObjectPropertyListenerBlock?
+
+    /// UID of the mic the user selected in Vox settings. Set externally.
+    var preferredInputUID: String = systemDefaultUID
 
     init() {
         refreshDevices()
         installDeviceChangeListener()
+        installDefaultInputListener()
     }
 
     deinit {
         // deinit is nonisolated, so inline the cleanup directly
-        guard let block = listenerBlock else { return }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        AudioObjectRemovePropertyListenerBlock(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            DispatchQueue.main,
-            block
-        )
+        if let block = deviceListenerBlock {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDevices,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                DispatchQueue.main,
+                block
+            )
+        }
+        if let block = defaultInputListenerBlock {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                DispatchQueue.main,
+                block
+            )
+        }
     }
 
     func refreshDevices() {
@@ -45,6 +67,59 @@ final class AudioDeviceManager: ObservableObject {
     func resolveDeviceID(forUID uid: String) -> AudioDeviceID? {
         guard uid != Self.systemDefaultUID else { return nil }
         return inputDevices.first(where: { $0.uid == uid })?.id
+    }
+
+    /// Ensure the macOS system default input matches the user's preference.
+    /// Called at startup and whenever the default input changes (e.g. Bluetooth
+    /// reconnects overnight and hijacks the input). This triggers a real
+    /// Bluetooth HFP → A2DP profile switch, unlike AudioUnitSetProperty which
+    /// changes the value but doesn't notify the Bluetooth stack.
+    func enforcePreferredInput() {
+        guard preferredInputUID != Self.systemDefaultUID else { return }
+        guard let preferred = inputDevices.first(where: { $0.uid == preferredInputUID }) else { return }
+
+        let current = Self.getSystemDefaultInputDevice()
+        guard current != preferred.id else { return }
+
+        // The current system default isn't our preferred mic — Bluetooth or
+        // something else hijacked it. Switch it back.
+        let currentName = inputDevices.first(where: { $0.id == current })?.name ?? "unknown"
+        deviceLogger.notice("System input was \(currentName) (\(current)), enforcing \(preferred.name) (\(preferred.id))")
+        Self.setSystemDefaultInputDevice(preferred.id)
+    }
+
+    // MARK: - System Default Input Device
+
+    static func getSystemDefaultInputDevice() -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address, 0, nil, &size, &deviceID
+        )
+        return deviceID
+    }
+
+    @discardableResult
+    static func setSystemDefaultInputDevice(_ deviceID: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var id = deviceID
+        let status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address, 0, nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size),
+            &id
+        )
+        return status == noErr
     }
 
     // MARK: - CoreAudio Enumeration
@@ -137,7 +212,7 @@ final class AudioDeviceManager: ObservableObject {
         return cfUID as String
     }
 
-    // MARK: - Device Change Listener
+    // MARK: - Device Change Listeners
 
     private func installDeviceChangeListener() {
         var address = AudioObjectPropertyAddress(
@@ -149,9 +224,35 @@ final class AudioDeviceManager: ObservableObject {
         let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             Task { @MainActor in
                 self?.refreshDevices()
+                self?.enforcePreferredInput()
             }
         }
-        listenerBlock = block
+        deviceListenerBlock = block
+
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            DispatchQueue.main,
+            block
+        )
+    }
+
+    /// Listen for changes to the system default input device. When Bluetooth
+    /// reconnects after sleep, macOS silently switches the input to the headset.
+    /// This listener catches that and switches it back immediately.
+    private func installDefaultInputListener() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            Task { @MainActor in
+                self?.enforcePreferredInput()
+            }
+        }
+        defaultInputListenerBlock = block
 
         AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),

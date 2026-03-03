@@ -79,14 +79,14 @@ final class TranscriptionCoordinator {
                 if appState.muteWhileRecording {
                     await appState.audioMuteService.muteOutput()
                 }
-                let deviceID = appState.audioDeviceManager.resolveDeviceID(forUID: appState.selectedInputDeviceUID)
+                // Device selection is handled by AudioDeviceManager which
+                // enforces the system default at startup and on device changes.
                 let levelCallback: @Sendable (Float) -> Void = { [weak appState] level in
                     Task { @MainActor in
                         appState?.pushAudioLevel(level)
                     }
                 }
                 try await audioService.startRecording(
-                    inputDeviceID: deviceID,
                     noiseReductionEnabled: appState.noiseReductionEnabled,
                     onAudioLevel: levelCallback
                 )
