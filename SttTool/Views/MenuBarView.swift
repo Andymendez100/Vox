@@ -18,8 +18,10 @@ struct MenuBarView: View {
 
             if appState.transcriptionState == .loading {
                 statusSection
+                    .transition(.opacity)
             } else if case .error = appState.transcriptionState {
                 statusSection
+                    .transition(.opacity)
             }
 
             modeSection
@@ -30,6 +32,8 @@ struct MenuBarView: View {
         .padding(12)
         .frame(width: 340)
         .background(.ultraThinMaterial)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.transcriptionState)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.canUndo)
     }
 
     // MARK: - Header
@@ -299,6 +303,20 @@ struct MenuBarView: View {
     }
 
     private func footerButton(icon: String, tooltip: String, action: @escaping () -> Void) -> some View {
+        FooterButtonView(icon: icon, tooltip: tooltip, action: action)
+    }
+}
+
+// MARK: - Footer Button with Hover Glow
+
+private struct FooterButtonView: View {
+    let icon: String
+    let tooltip: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .medium))
@@ -310,13 +328,17 @@ struct MenuBarView: View {
                 )
                 .overlay(
                     Circle()
-                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                        .strokeBorder(.white.opacity(isHovered ? 0.25 : 0.1), lineWidth: 0.5)
                 )
+                .shadow(color: .white.opacity(isHovered ? 0.1 : 0), radius: 4, x: 0, y: 0)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(tooltip)
         .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
             if hovering { NSCursor.pointingHand.push() }
             else { NSCursor.pop() }
         }
@@ -362,7 +384,7 @@ private struct TranscriptionRow: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(isHovered ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.15))
+                    .fill(isHovered ? AnyShapeStyle(Color.accentColor.opacity(0.6)) : AnyShapeStyle(.quaternary))
                     .frame(width: 2, height: 16)
                     .padding(.top, 2)
                     .animation(.easeInOut(duration: 0.15), value: isHovered)
