@@ -6,27 +6,30 @@ struct MenuBarView: View {
 
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var modeManager = AppState.shared.modeManager
+    @State private var ringPulsing = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             headerSection
-            divider
-            statusSection
-            divider
+
+            if appState.canUndo {
+                undoBanner
+            }
+
+            if appState.transcriptionState == .loading {
+                statusSection
+            } else if case .error = appState.transcriptionState {
+                statusSection
+            }
+
             modeSection
-            divider
             transcriptionsSection
-            divider
+
             footerSection
         }
-        .frame(width: 320)
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 1)
-            .padding(.horizontal, 12)
+        .padding(12)
+        .frame(width: 340)
+        .background(.ultraThinMaterial)
     }
 
     // MARK: - Header
@@ -34,12 +37,27 @@ struct MenuBarView: View {
     private var headerSection: some View {
         HStack(spacing: 10) {
             ZStack {
+                // Outer glow ring
                 Circle()
-                    .fill(statusColor.opacity(0.15))
+                    .stroke(statusColor.opacity(0.4), lineWidth: 2)
                     .frame(width: 28, height: 28)
+                    .shadow(color: statusColor.opacity(0.5), radius: 6)
+                    .scaleEffect(ringPulsing ? 1.15 : 1.0)
+                    .opacity(ringPulsing ? 0.6 : 1.0)
+
+                // Inner filled dot
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
+            }
+            .animation(
+                appState.transcriptionState == .recording
+                    ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                    : .default,
+                value: ringPulsing
+            )
+            .onChange(of: appState.transcriptionState) { _, newState in
+                ringPulsing = (newState == .recording)
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -52,27 +70,6 @@ struct MenuBarView: View {
 
             Spacer()
 
-            if appState.canUndo {
-                Button {
-                    appState.coordinator.undoLastInjection()
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 10))
-                        Text("Undo")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                    }
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.orange.opacity(0.1))
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
             Text(appState.modelDisplayName)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -80,11 +77,14 @@ struct MenuBarView: View {
                 .padding(.vertical, 4)
                 .background(
                     Capsule()
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                 )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .glassCard()
     }
 
     private var statusColor: Color {
@@ -100,6 +100,44 @@ struct MenuBarView: View {
         case .error:
             return .orange
         }
+    }
+
+    // MARK: - Undo Banner
+
+    private var undoBanner: some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.orange)
+                .frame(width: 2, height: 20)
+
+            Text("Text injected")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button {
+                appState.coordinator.undoLastInjection()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 10))
+                    Text("Undo")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(Color.orange.opacity(0.12))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .glassCard()
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.canUndo)
     }
 
     // MARK: - Status
@@ -126,8 +164,7 @@ struct MenuBarView: View {
                             .tint(.accentColor)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .glassCard()
             } else if case .error(let msg) = appState.transcriptionState {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -139,10 +176,7 @@ struct MenuBarView: View {
                         .lineLimit(2)
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            } else {
-                EmptyView()
+                .glassCard()
             }
         }
     }
@@ -151,11 +185,6 @@ struct MenuBarView: View {
 
     private var modeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("MODE")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
-                .tracking(0.8)
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(modeManager.allModes) { mode in
@@ -169,7 +198,7 @@ struct MenuBarView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(appState.superModeEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
 
-                Text("Auto-select mode")
+                Text("Super Mode")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
 
@@ -179,16 +208,16 @@ struct MenuBarView: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
+                    .tint(.accentColor)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .glassCard()
     }
 
     private func modePill(_ mode: TranscriptionMode) -> some View {
         let isSelected = appState.selectedMode == mode.id
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 appState.selectedMode = mode.id
             }
         } label: {
@@ -199,8 +228,9 @@ struct MenuBarView: View {
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.05))
+                        .fill(isSelected ? Color.accentColor : Color.white.opacity(0.06))
                 )
+                .shadow(color: isSelected ? Color.accentColor.opacity(0.3) : .clear, radius: 6, x: 0, y: 0)
         }
         .buttonStyle(.plain)
     }
@@ -209,11 +239,9 @@ struct MenuBarView: View {
 
     private var transcriptionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("RECENT")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+            Text("Recent")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(.tertiary)
-                .tracking(0.8)
-                .padding(.horizontal, 16)
 
             if appState.recentTranscriptions.isEmpty {
                 emptyState
@@ -222,7 +250,7 @@ struct MenuBarView: View {
             }
         }
         .frame(maxHeight: 200)
-        .padding(.vertical, 12)
+        .glassCard()
     }
 
     private var emptyState: some View {
@@ -240,7 +268,7 @@ struct MenuBarView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(.vertical, 12)
     }
 
     private var transcriptionsList: some View {
@@ -250,50 +278,73 @@ struct MenuBarView: View {
                     TranscriptionRow(text: text)
                 }
             }
-            .padding(.horizontal, 12)
         }
     }
 
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: 0) {
-            footerButton(icon: "gear", label: "Settings") {
+        HStack(spacing: 12) {
+            Spacer()
+
+            footerButton(icon: "gear", tooltip: "Settings") {
                 onOpenSettings()
             }
 
-            Spacer()
-
-            footerButton(icon: "power", label: "Quit") {
+            footerButton(icon: "power", tooltip: "Quit") {
                 onQuit()
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
     }
 
-    private func footerButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+    private func footerButton(icon: String, tooltip: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                Text(label)
-                    .font(.system(size: 12, design: .rounded))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.001))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                )
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .help(tooltip)
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() }
             else { NSCursor.pop() }
         }
+    }
+}
+
+// MARK: - Glass Card Modifier
+
+private struct GlassCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+    }
+}
+
+extension View {
+    fileprivate func glassCard() -> some View {
+        modifier(GlassCard())
     }
 }
 
@@ -310,6 +361,12 @@ private struct TranscriptionRow: View {
             copyToClipboard()
         } label: {
             HStack(alignment: .top, spacing: 8) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(isHovered ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.15))
+                    .frame(width: 2, height: 16)
+                    .padding(.top, 2)
+                    .animation(.easeInOut(duration: 0.15), value: isHovered)
+
                 Text(text)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.85))
@@ -329,8 +386,8 @@ private struct TranscriptionRow: View {
                         .transition(.opacity)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.primary.opacity(0.04) : Color.clear)
@@ -338,7 +395,7 @@ private struct TranscriptionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
+            withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
