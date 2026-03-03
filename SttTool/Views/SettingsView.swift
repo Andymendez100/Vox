@@ -627,8 +627,10 @@ private struct APIKeysTabContent: View {
 
     @State private var openaiKey = ""
     @State private var anthropicKey = ""
+    @State private var geminiKey = ""
     @State private var showOpenAIKey = false
     @State private var showAnthropicKey = false
+    @State private var showGeminiKey = false
     @State private var savedIndicator: String?
 
     var body: some View {
@@ -640,10 +642,11 @@ private struct APIKeysTabContent: View {
                     Picker("", selection: $modeManager.selectedProvider) {
                         Text("OpenAI").tag("openai")
                         Text("Anthropic").tag("anthropic")
+                        Text("Gemini").tag("gemini")
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 200)
+                    .frame(width: 280)
                 }
             }
             .settingsGlassCard()
@@ -687,10 +690,31 @@ private struct APIKeysTabContent: View {
                 .disabled(anthropicKey.isEmpty)
             }
             .settingsGlassCard()
+
+            // Gemini
+            SectionHeader(title: "GEMINI")
+            VStack(spacing: 12) {
+                apiKeyField(
+                    placeholder: "AI...",
+                    key: $geminiKey,
+                    showKey: $showGeminiKey
+                )
+                SettingsRow(label: "Model name") {
+                    TextField("", text: $modeManager.geminiModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
+                saveButton(provider: "Gemini") {
+                    KeychainService.save(key: "gemini_api_key", value: geminiKey)
+                }
+                .disabled(geminiKey.isEmpty)
+            }
+            .settingsGlassCard()
         }
         .onAppear {
             openaiKey = KeychainService.get(key: "openai_api_key") ?? ""
             anthropicKey = KeychainService.get(key: "anthropic_api_key") ?? ""
+            geminiKey = KeychainService.get(key: "gemini_api_key") ?? ""
         }
     }
 

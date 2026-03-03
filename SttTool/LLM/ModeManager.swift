@@ -27,6 +27,7 @@ final class ModeManager: ObservableObject {
     @AppStorage("llmProvider") var selectedProvider: String = "openai"
     @AppStorage("openaiModel") var openaiModel: String = "gpt-4o-mini"
     @AppStorage("anthropicModel") var anthropicModel: String = "claude-haiku-4-5-20251001"
+    @AppStorage("geminiModel") var geminiModel: String = "gemini-2.0-flash"
 
     init() {
         loadCustomModes()
@@ -65,6 +66,10 @@ final class ModeManager: ObservableObject {
             let key = KeychainService.get(key: "anthropic_api_key")
             guard let key, !key.isEmpty else { return nil }
             return AnthropicProvider(model: anthropicModel, apiKey: key)
+        case "gemini":
+            let key = KeychainService.get(key: "gemini_api_key")
+            guard let key, !key.isEmpty else { return nil }
+            return GeminiProvider(model: geminiModel, apiKey: key)
         default:
             return nil
         }

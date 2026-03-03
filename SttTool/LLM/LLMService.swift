@@ -7,4 +7,5 @@ protocol LLMProvider {
 enum LLMProviderType: String, CaseIterable, Codable {
     case openai = "OpenAI"
     case anthropic = "Anthropic"
+    case gemini = "Google Gemini"
 }
