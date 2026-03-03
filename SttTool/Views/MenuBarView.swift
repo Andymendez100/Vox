@@ -7,6 +7,7 @@ struct MenuBarView: View {
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var modeManager = AppState.shared.modeManager
     @State private var ringPulsing = false
+    @State private var showRecent = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -76,7 +77,7 @@ struct MenuBarView: View {
 
             Spacer()
 
-            Text(appState.modelDisplayName)
+            Text(activeModelName)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
@@ -91,6 +92,20 @@ struct MenuBarView: View {
                 )
         }
         .glassCard()
+    }
+
+    private var activeModelName: String {
+        let mode: TranscriptionMode?
+        if appState.superModeEnabled, let autoMode = modeManager.detectModeForActiveApp() {
+            mode = autoMode
+        } else {
+            mode = modeManager.getMode(id: appState.selectedMode)
+        }
+        // Voice mode has no LLM processing — show Whisper model
+        if mode == nil || mode?.id == "voice" {
+            return appState.modelDisplayName
+        }
+        return modeManager.llmModelDisplayName
     }
 
     private var statusColor: Color {
@@ -190,11 +205,9 @@ struct MenuBarView: View {
 
     private var modeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(modeManager.allModes) { mode in
-                        modePill(mode)
-                    }
+            FlowLayout(spacing: 6) {
+                ForEach(modeManager.allModes) { mode in
+                    modePill(mode)
                 }
             }
 
@@ -244,17 +257,41 @@ struct MenuBarView: View {
 
     private var transcriptionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recent")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showRecent.toggle()
+                }
+            } label: {
+                HStack {
+                    Text("Recent")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
 
-            if appState.recentTranscriptions.isEmpty {
-                emptyState
-            } else {
-                transcriptionsList
+                    if !appState.recentTranscriptions.isEmpty {
+                        Text("\(appState.recentTranscriptions.count)")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(showRecent ? 90 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showRecent {
+                if appState.recentTranscriptions.isEmpty {
+                    emptyState
+                } else {
+                    transcriptionsList
+                }
             }
         }
-        .frame(maxHeight: 200)
+        .frame(maxHeight: showRecent ? 200 : nil)
         .glassCard()
     }
 
@@ -394,7 +431,6 @@ private struct TranscriptionRow: View {
                 Text(text)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.85))
-                    .lineLimit(3)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -439,5 +475,48 @@ private struct TranscriptionRow: View {
                 showCopied = false
             }
         }
+    }
+}
+
+// MARK: - Flow Layout
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(in: proposal.width ?? .infinity, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrange(in: bounds.width, subviews: subviews)
+        for (index, position) in result.positions.enumerated() {
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
+                proposal: .unspecified
+            )
+        }
+    }
+
+    private func arrange(in maxWidth: CGFloat, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
+        var positions: [CGPoint] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var maxX: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            positions.append(CGPoint(x: x, y: y))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            maxX = max(maxX, x - spacing)
+        }
+
+        return (CGSize(width: maxX, height: y + rowHeight), positions)
     }
 }

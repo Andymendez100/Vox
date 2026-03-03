@@ -100,8 +100,7 @@ struct TranscriptionOverlayView: View {
                 Text(appState.liveTranscriptionText)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: 380)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -109,25 +108,26 @@ struct TranscriptionOverlayView: View {
     // MARK: - Non-recording Layout (dot + status)
 
     private var nonRecordingBody: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 10, height: 10)
-                .shadow(color: dotColor.opacity(0.5), radius: 3)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 10, height: 10)
+                    .shadow(color: dotColor.opacity(0.5), radius: 3)
 
-            Text(statusText)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
+                Text(statusText)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+            }
 
             if !appState.liveTranscriptionText.isEmpty {
                 Text(appState.liveTranscriptionText)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 300, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Spacer(minLength: 0)
         }
     }
 
@@ -223,6 +223,7 @@ private class DraggableWindow: NSWindow {
 @MainActor
 final class OverlayWindowController {
     private var window: NSWindow?
+    private var cancellable: AnyCancellable?
 
     func show() {
         if let window = window, window.isVisible {
@@ -232,14 +233,15 @@ final class OverlayWindowController {
 
         let overlayView = TranscriptionOverlayView()
         let hostingView = NSHostingView(rootView: overlayView)
-        hostingView.setFrameSize(NSSize(width: 440, height: 80))
 
         // Ensure no opaque background behind the rounded pill
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = .clear
 
+        let initialSize = hostingView.fittingSize
+
         let window = DraggableWindow(
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 440, height: 80)),
+            contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -257,11 +259,34 @@ final class OverlayWindowController {
         repositionWindow(window)
         window.orderFront(nil)
         self.window = window
+
+        // Auto-resize window when content changes
+        cancellable = AppState.shared.objectWillChange
+            .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.resizeWindowToFit()
+            }
     }
 
     func dismiss() {
+        cancellable?.cancel()
+        cancellable = nil
         window?.orderOut(nil)
         window = nil
+    }
+
+    // MARK: - Sizing
+
+    private func resizeWindowToFit() {
+        guard let window = window,
+              let hostingView = window.contentView as? NSHostingView<TranscriptionOverlayView> else { return }
+        let newSize = hostingView.fittingSize
+        guard newSize.width > 0, newSize.height > 0 else { return }
+        var frame = window.frame
+        let heightDelta = newSize.height - frame.height
+        frame.size = newSize
+        frame.origin.y -= heightDelta
+        window.setFrame(frame, display: true, animate: false)
     }
 
     // MARK: - Positioning

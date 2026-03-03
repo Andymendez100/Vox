@@ -41,5 +41,12 @@ struct TranscriptionMode: Identifiable, Codable, Equatable {
         isBuiltIn: true
     )
 
-    static let allBuiltIn: [TranscriptionMode] = [voice, message, email, formal, code]
+    static let llmOptimize = TranscriptionMode(
+        id: "llm_optimize",
+        name: "LLM Optimize",
+        systemPrompt: "You are a speech-to-prompt optimizer. Take the following speech transcription and condense it into a clear, concise LLM prompt. Remove all filler words, hedging, repetition, and verbal thinking-out-loud. Distill the core intent and requirements into direct, token-efficient instructions. Preserve technical details and specifics but eliminate conversational padding. Do NOT add any preamble or explanation. Output ONLY the optimized prompt text.",
+        isBuiltIn: true
+    )
+
+    static let allBuiltIn: [TranscriptionMode] = [voice, message, email, formal, code, llmOptimize]
 }
