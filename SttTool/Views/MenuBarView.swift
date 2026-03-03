@@ -54,14 +54,16 @@ struct MenuBarView: View {
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
             }
-            .animation(
-                appState.transcriptionState == .recording
-                    ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                    : .default,
-                value: ringPulsing
-            )
             .onChange(of: appState.transcriptionState) { _, newState in
-                ringPulsing = (newState == .recording)
+                if newState == .recording {
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        ringPulsing = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        ringPulsing = false
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -141,7 +143,6 @@ struct MenuBarView: View {
         }
         .glassCard()
         .transition(.move(edge: .top).combined(with: .opacity))
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appState.canUndo)
     }
 
     // MARK: - Status
@@ -278,7 +279,7 @@ struct MenuBarView: View {
     private var transcriptionsList: some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 2) {
-                ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.offset) { _, text in
+                ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.element) { _, text in
                     TranscriptionRow(text: text)
                 }
             }
@@ -377,6 +378,7 @@ private struct TranscriptionRow: View {
 
     @State private var isHovered = false
     @State private var showCopied = false
+    @State private var copyTask: Task<Void, Never>?
 
     var body: some View {
         Button {
@@ -429,7 +431,10 @@ private struct TranscriptionRow: View {
         withAnimation(.easeInOut(duration: 0.15)) {
             showCopied = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        copyTask?.cancel()
+        copyTask = Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.15)) {
                 showCopied = false
             }
