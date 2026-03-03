@@ -159,9 +159,20 @@ actor AudioCaptureService {
         audioSamples.append(contentsOf: extracted)
 
         // Send audio level to callback (use gated level so waveform matches output)
+        // Use dB scaling for perceptually accurate waveform — linear RMS makes
+        // normal speech barely visible on built-in mics.
         if let callback = onAudioLevel {
             let level = (noiseReductionEnabled && rms < noiseGateThreshold) ? Float(0) : rms
-            let normalized = min(level * 5.0, 1.0)
+            let normalized: Float
+            if level > 0 {
+                // Convert to dB (range roughly -60..0 for mic input),
+                // then map to 0..1 with -50 dB as floor.
+                let db = 20 * log10(level)
+                let floor: Float = -50
+                normalized = max(0, min(1, (db - floor) / -floor))
+            } else {
+                normalized = 0
+            }
             callback(normalized)
         }
     }

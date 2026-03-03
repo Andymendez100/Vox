@@ -94,6 +94,19 @@ final class ModeManager: ObservableObject {
         return getMode(id: modeId)
     }
 
+    /// Pre-access the keychain so the system password prompt appears at launch
+    /// rather than mid-transcription.
+    func warmUpKeychain() {
+        let keyName: String
+        switch selectedProvider {
+        case "openai": keyName = "openai_api_key"
+        case "anthropic": keyName = "anthropic_api_key"
+        case "gemini": keyName = "gemini_api_key"
+        default: return
+        }
+        _ = KeychainService.get(key: keyName)
+    }
+
     func getProvider() -> LLMProvider? {
         switch selectedProvider {
         case "openai":

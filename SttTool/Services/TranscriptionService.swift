@@ -27,10 +27,18 @@ actor TranscriptionService {
         ]
     }
 
+    private static let modelsDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Vox/Models", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     func loadModel(_ modelName: String, progressCallback: ((Progress) -> Void)? = nil) async throws {
         // Download with progress reporting
         let modelFolder = try await WhisperKit.download(
             variant: modelName,
+            downloadBase: Self.modelsDirectory,
             progressCallback: progressCallback
         )
 

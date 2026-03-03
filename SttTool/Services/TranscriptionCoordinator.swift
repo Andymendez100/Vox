@@ -154,12 +154,15 @@ final class TranscriptionCoordinator {
                 }
 
                 // LLM processing if mode is not "voice"
+                // Skip for very short text — the LLM has nothing meaningful to
+                // format and tends to reply with its own prompt instead.
+                let wordCount = text.split(separator: " ").count
                 let mode = appState.modeManager.resolveMode(
                     selectedMode: appState.selectedMode,
                     superModeEnabled: appState.superModeEnabled
                 )
 
-                if let mode, mode.id != "voice", !mode.systemPrompt.isEmpty {
+                if let mode, mode.id != "voice", !mode.systemPrompt.isEmpty, wordCount >= 3 {
                     appState.transcriptionState = .processing
                     if let provider = appState.modeManager.getProvider() {
                         do {

@@ -90,6 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.notice("Audio engine pre-warmed")
         }
 
+        // Pre-access keychain so the password prompt appears now, not mid-transcription
+        AppState.shared.modeManager.warmUpKeychain()
+
         // Load model in background
         Task {
             await self.loadModel()
