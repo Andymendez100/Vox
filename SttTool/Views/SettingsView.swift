@@ -1,50 +1,169 @@
 import SwiftUI
 import CoreGraphics
 
+// MARK: - Settings Tab Enum
+
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general = "General"
+    case models = "Models"
+    case modes = "Modes"
+    case apiKeys = "API Keys"
+    case vocabulary = "Vocabulary"
+    case language = "Language"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .general: return "gear"
+        case .models: return "cpu"
+        case .modes: return "text.bubble"
+        case .apiKeys: return "key"
+        case .vocabulary: return "character.book.closed"
+        case .language: return "globe"
+        }
+    }
+}
+
+// MARK: - Settings Glass Card Modifier
+
+private struct SettingsGlassCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+    }
+}
+
+extension View {
+    fileprivate func settingsGlassCard() -> some View {
+        modifier(SettingsGlassCard())
+    }
+}
+
+// MARK: - Section Header
+
+private struct SectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+    }
+}
+
+// MARK: - Settings Row
+
+private struct SettingsRow<Content: View>: View {
+    let label: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13, design: .rounded))
+            Spacer()
+            content()
+        }
+    }
+}
+
 // MARK: - Main Settings View
 
 struct SettingsView: View {
     @ObservedObject private var appState = AppState.shared
+    @State private var selectedTab: SettingsTab = .general
 
     var body: some View {
-        TabView {
-            GeneralTab()
-                .tabItem {
-                    Label("General", systemImage: "gear")
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(spacing: 4) {
+                ForEach(SettingsTab.allCases) { tab in
+                    sidebarItem(tab)
                 }
+                Spacer()
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 8)
+            .frame(width: 140)
 
-            ModelsTab()
-                .tabItem {
-                    Label("Models", systemImage: "cpu")
-                }
+            Divider()
+                .opacity(0.3)
 
-            ModesTab()
-                .tabItem {
-                    Label("Modes", systemImage: "text.bubble")
+            // Content area
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 16) {
+                    switch selectedTab {
+                    case .general:
+                        GeneralTabContent()
+                    case .models:
+                        ModelsTabContent()
+                    case .modes:
+                        ModesTabContent()
+                    case .apiKeys:
+                        APIKeysTabContent()
+                    case .vocabulary:
+                        VocabularyTabContent()
+                    case .language:
+                        LanguageTabContent()
+                    }
                 }
-
-            APIKeysTab()
-                .tabItem {
-                    Label("API Keys", systemImage: "key")
-                }
-
-            VocabularyTab()
-                .tabItem {
-                    Label("Vocabulary", systemImage: "character.book.closed")
-                }
-
-            LanguageTab()
-                .tabItem {
-                    Label("Language", systemImage: "globe")
-                }
+                .padding(20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 520, height: 440)
+        .frame(width: 640, height: 520)
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Sidebar Item
+
+    private func sidebarItem(_ tab: SettingsTab) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                selectedTab = tab
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 16, weight: .medium))
+                Text(tab.rawValue)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if selectedTab == tab {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                            .shadow(color: Color.accentColor.opacity(0.2), radius: 6, x: 0, y: 0)
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
-// MARK: - General Tab
+// MARK: - General Tab Content
 
-struct GeneralTab: View {
+private struct GeneralTabContent: View {
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var permissions = AppState.shared.permissionsService
     @ObservedObject private var deviceManager = AppState.shared.audioDeviceManager
@@ -52,15 +171,21 @@ struct GeneralTab: View {
     @State private var eventMonitor: Any?
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Mode", selection: $appState.activationMode) {
-                    Text("Push to Talk").tag("pushToTalk")
-                    Text("Toggle").tag("toggle")
+        VStack(alignment: .leading, spacing: 16) {
+            // Activation
+            SectionHeader(title: "ACTIVATION")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Mode") {
+                    Picker("", selection: $appState.activationMode) {
+                        Text("Push to Talk").tag("pushToTalk")
+                        Text("Toggle").tag("toggle")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
-                .pickerStyle(.segmented)
 
-                LabeledContent("Hotkey") {
+                SettingsRow(label: "Hotkey") {
                     Button {
                         startRecordingHotkey()
                     } label: {
@@ -92,38 +217,71 @@ struct GeneralTab: View {
                     .buttonStyle(.plain)
                     .animation(.easeInOut(duration: 0.15), value: isRecordingHotkey)
                 }
-            } header: {
-                Text("Activation")
             }
+            .settingsGlassCard()
 
-            Section("Audio Input") {
-                Picker("Microphone", selection: $appState.selectedInputDeviceUID) {
-                    Text("System Default").tag(AudioDeviceManager.systemDefaultUID)
-                    ForEach(deviceManager.inputDevices) { device in
-                        Text(device.name).tag(device.uid)
+            // Audio Input
+            SectionHeader(title: "AUDIO INPUT")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Microphone") {
+                    Picker("", selection: $appState.selectedInputDeviceUID) {
+                        Text("System Default").tag(AudioDeviceManager.systemDefaultUID)
+                        ForEach(deviceManager.inputDevices) { device in
+                            Text(device.name).tag(device.uid)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
+                    .onChange(of: appState.selectedInputDeviceUID) { _, newUID in
+                        deviceManager.preferredInputUID = newUID
+                        deviceManager.enforcePreferredInput()
                     }
                 }
-                .onChange(of: appState.selectedInputDeviceUID) { _, newUID in
-                    deviceManager.preferredInputUID = newUID
-                    deviceManager.enforcePreferredInput()
+
+                SettingsRow(label: "Noise reduction") {
+                    Toggle("", isOn: $appState.noiseReductionEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                 }
 
-                Toggle("Noise reduction", isOn: $appState.noiseReductionEnabled)
                 Text("Applies a noise gate to suppress low-level background noise during recording.")
-                    .font(.system(.caption, design: .rounded))
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .settingsGlassCard()
 
-            Section("Behavior") {
-                Toggle("Sound feedback", isOn: $appState.soundFeedbackEnabled)
-                Toggle("Copy to clipboard only (don't auto-paste)", isOn: $appState.copyOnlyMode)
+            // Behavior
+            SectionHeader(title: "BEHAVIOR")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Sound feedback") {
+                    Toggle("", isOn: $appState.soundFeedbackEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+
+                SettingsRow(label: "Copy to clipboard only (don't auto-paste)") {
+                    Toggle("", isOn: $appState.copyOnlyMode)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
             }
+            .settingsGlassCard()
 
-            Section("Startup") {
-                Toggle("Launch at Login", isOn: $appState.launchAtLogin)
+            // Startup
+            SectionHeader(title: "STARTUP")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Launch at Login") {
+                    Toggle("", isOn: $appState.launchAtLogin)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
             }
+            .settingsGlassCard()
 
-            Section("Permissions") {
+            // Permissions
+            SectionHeader(title: "PERMISSIONS")
+            VStack(spacing: 12) {
                 permissionRow(
                     name: "Microphone",
                     granted: permissions.microphoneGranted,
@@ -137,13 +295,12 @@ struct GeneralTab: View {
                     onOpen: { permissions.openAccessibilitySettings() }
                 )
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
         .onAppear {
             permissions.checkPermissions()
         }
         .onDisappear {
-            // Clean up any active hotkey recording monitor
             if let monitor = eventMonitor {
                 NSEvent.removeMonitor(monitor)
                 eventMonitor = nil
@@ -159,7 +316,7 @@ struct GeneralTab: View {
                     .foregroundStyle(granted ? .green : .red)
                     .font(.system(size: 14))
                 Text(name)
-                    .font(.system(.body, design: .rounded))
+                    .font(.system(size: 13, design: .rounded))
             }
             Spacer()
             if granted {
@@ -278,9 +435,9 @@ struct GeneralTab: View {
     }
 }
 
-// MARK: - Models Tab
+// MARK: - Models Tab Content
 
-struct ModelsTab: View {
+private struct ModelsTabContent: View {
     @ObservedObject private var appState = AppState.shared
     private let models = TranscriptionService.ModelInfo.available
 
@@ -292,18 +449,24 @@ struct ModelsTab: View {
     ]
 
     var body: some View {
-        Form {
-            Section("Whisper Model") {
-                Picker("Model", selection: $appState.selectedModel) {
-                    ForEach(models, id: \.id) { model in
-                        HStack {
-                            Text(model.displayName)
-                            Spacer()
-                            Text(model.sizeDescription)
-                                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "WHISPER MODEL")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Model") {
+                    Picker("", selection: $appState.selectedModel) {
+                        ForEach(models, id: \.id) { model in
+                            HStack {
+                                Text(model.displayName)
+                                Spacer()
+                                Text(model.sizeDescription)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(model.id)
                         }
-                        .tag(model.id)
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
 
                 if appState.transcriptionState == .loading {
@@ -311,19 +474,19 @@ struct ModelsTab: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Loading model...")
-                            .font(.system(.body, design: .rounded))
+                            .font(.system(size: 13, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if let desc = selectedModelDescription {
                     Text(desc)
-                        .font(.system(.caption, design: .rounded))
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
     }
 
     private var selectedModelDescription: String? {
@@ -334,9 +497,9 @@ struct ModelsTab: View {
     }
 }
 
-// MARK: - Modes Tab
+// MARK: - Modes Tab Content
 
-struct ModesTab: View {
+private struct ModesTabContent: View {
     @ObservedObject private var appState = AppState.shared
     @ObservedObject private var modeManager = AppState.shared.modeManager
 
@@ -345,25 +508,42 @@ struct ModesTab: View {
     @State private var showingAddMode = false
 
     var body: some View {
-        Form {
-            Section("Active Mode") {
-                Picker("Mode", selection: $appState.selectedMode) {
-                    ForEach(modeManager.allModes) { mode in
-                        Text(mode.name).tag(mode.id)
+        VStack(alignment: .leading, spacing: 16) {
+            // Active Mode
+            SectionHeader(title: "ACTIVE MODE")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Mode") {
+                    Picker("", selection: $appState.selectedMode) {
+                        ForEach(modeManager.allModes) { mode in
+                            Text(mode.name).tag(mode.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
+                }
+            }
+            .settingsGlassCard()
+
+            // Built-in Modes
+            SectionHeader(title: "BUILT-IN MODES")
+            VStack(spacing: 8) {
+                ForEach(TranscriptionMode.allBuiltIn) { mode in
+                    BuiltInModeRow(mode: mode)
+                    if mode.id != TranscriptionMode.allBuiltIn.last?.id {
+                        Divider().opacity(0.3)
                     }
                 }
             }
+            .settingsGlassCard()
 
-            Section("Built-in Modes") {
-                ForEach(TranscriptionMode.allBuiltIn) { mode in
-                    BuiltInModeRow(mode: mode)
-                }
-            }
-
-            Section("Custom Modes") {
+            // Custom Modes
+            SectionHeader(title: "CUSTOM MODES")
+            VStack(spacing: 8) {
                 ForEach(modeManager.customModes) { mode in
                     HStack {
                         Text(mode.name)
+                            .font(.system(size: 13, design: .rounded))
                         Spacer()
                         Button(role: .destructive) {
                             modeManager.removeCustomMode(id: mode.id)
@@ -374,18 +554,24 @@ struct ModesTab: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    if mode.id != modeManager.customModes.last?.id {
+                        Divider().opacity(0.3)
+                    }
                 }
 
                 if modeManager.customModes.isEmpty {
                     Text("No custom modes yet")
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(size: 13, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
 
                 if showingAddMode {
+                    Divider().opacity(0.3)
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("Mode name", text: $newModeName)
+                            .textFieldStyle(.roundedBorder)
                         TextField("System prompt", text: $newModePrompt, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
                             .lineLimit(3...5)
                         HStack {
                             Button("Cancel") {
@@ -405,30 +591,38 @@ struct ModesTab: View {
                         }
                     }
                 } else {
+                    Divider().opacity(0.3)
                     Button {
                         showingAddMode = true
                     } label: {
                         Label("Add Custom Mode", systemImage: "plus")
+                            .font(.system(size: 13, design: .rounded))
                     }
                 }
             }
+            .settingsGlassCard()
 
-            Section {
-                Toggle("Super Mode", isOn: $appState.superModeEnabled)
+            // Super Mode
+            SectionHeader(title: "SUPER MODE")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Super Mode") {
+                    Toggle("", isOn: $appState.superModeEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+
                 Text("Automatically selects the best mode based on the active application.")
-                    .font(.system(.caption, design: .rounded))
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
-            } header: {
-                Text("Super Mode")
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
     }
 }
 
-// MARK: - API Keys Tab
+// MARK: - API Keys Tab Content
 
-struct APIKeysTab: View {
+private struct APIKeysTabContent: View {
     @ObservedObject private var modeManager = AppState.shared.modeManager
 
     @State private var openaiKey = ""
@@ -438,44 +632,62 @@ struct APIKeysTab: View {
     @State private var savedIndicator: String?
 
     var body: some View {
-        Form {
-            Section("Provider") {
-                Picker("LLM Provider", selection: $modeManager.selectedProvider) {
-                    Text("OpenAI").tag("openai")
-                    Text("Anthropic").tag("anthropic")
+        VStack(alignment: .leading, spacing: 16) {
+            // Provider
+            SectionHeader(title: "PROVIDER")
+            VStack(spacing: 12) {
+                SettingsRow(label: "LLM Provider") {
+                    Picker("", selection: $modeManager.selectedProvider) {
+                        Text("OpenAI").tag("openai")
+                        Text("Anthropic").tag("anthropic")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 200)
                 }
-                .pickerStyle(.segmented)
             }
+            .settingsGlassCard()
 
-            Section("OpenAI") {
+            // OpenAI
+            SectionHeader(title: "OPENAI")
+            VStack(spacing: 12) {
                 apiKeyField(
                     placeholder: "sk-...",
                     key: $openaiKey,
                     showKey: $showOpenAIKey
                 )
-                TextField("Model name", text: $modeManager.openaiModel)
-                    .textFieldStyle(.roundedBorder)
+                SettingsRow(label: "Model name") {
+                    TextField("", text: $modeManager.openaiModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
                 saveButton(provider: "OpenAI") {
                     KeychainService.save(key: "openai_api_key", value: openaiKey)
                 }
                 .disabled(openaiKey.isEmpty)
             }
+            .settingsGlassCard()
 
-            Section("Anthropic") {
+            // Anthropic
+            SectionHeader(title: "ANTHROPIC")
+            VStack(spacing: 12) {
                 apiKeyField(
                     placeholder: "sk-ant-...",
                     key: $anthropicKey,
                     showKey: $showAnthropicKey
                 )
-                TextField("Model name", text: $modeManager.anthropicModel)
-                    .textFieldStyle(.roundedBorder)
+                SettingsRow(label: "Model name") {
+                    TextField("", text: $modeManager.anthropicModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                }
                 saveButton(provider: "Anthropic") {
                     KeychainService.save(key: "anthropic_api_key", value: anthropicKey)
                 }
                 .disabled(anthropicKey.isEmpty)
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
         .onAppear {
             openaiKey = KeychainService.get(key: "openai_api_key") ?? ""
             anthropicKey = KeychainService.get(key: "anthropic_api_key") ?? ""
@@ -484,6 +696,9 @@ struct APIKeysTab: View {
 
     private func apiKeyField(placeholder: String, key: Binding<String>, showKey: Binding<Bool>) -> some View {
         HStack {
+            Text("API Key")
+                .font(.system(size: 13, design: .rounded))
+            Spacer()
             Group {
                 if showKey.wrappedValue {
                     TextField(placeholder, text: key)
@@ -492,6 +707,7 @@ struct APIKeysTab: View {
                 }
             }
             .textFieldStyle(.roundedBorder)
+            .frame(width: 180)
 
             Button {
                 showKey.wrappedValue.toggle()
@@ -506,6 +722,7 @@ struct APIKeysTab: View {
 
     private func saveButton(provider: String, action: @escaping () -> Void) -> some View {
         HStack {
+            Spacer()
             Button("Save Key") {
                 action()
                 showSaved(provider)
@@ -533,26 +750,29 @@ struct APIKeysTab: View {
     }
 }
 
-// MARK: - Vocabulary Tab
+// MARK: - Vocabulary Tab Content
 
-struct VocabularyTab: View {
+private struct VocabularyTabContent: View {
     @ObservedObject private var appState = AppState.shared
     @State private var newWord = ""
     @State private var words: [String] = []
 
     var body: some View {
-        Form {
-            Section {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "CUSTOM VOCABULARY")
+            VStack(spacing: 12) {
                 Text("Add specialized words, names, or technical terms to improve transcription accuracy.")
-                    .font(.system(.caption, design: .rounded))
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .settingsGlassCard()
 
-            Section("Words") {
+            SectionHeader(title: "WORDS")
+            VStack(spacing: 8) {
                 ForEach(words, id: \.self) { word in
                     HStack {
                         Text(word)
-                            .font(.system(.body, design: .rounded))
+                            .font(.system(size: 13, design: .rounded))
                         Spacer()
                         Button(role: .destructive) {
                             removeWord(word)
@@ -563,13 +783,18 @@ struct VocabularyTab: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    if word != words.last {
+                        Divider().opacity(0.3)
+                    }
                 }
 
                 if words.isEmpty {
                     Text("No custom vocabulary words")
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(size: 13, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
+
+                Divider().opacity(0.3)
 
                 HStack {
                     TextField("Add word or phrase", text: $newWord)
@@ -586,8 +811,8 @@ struct VocabularyTab: View {
                     .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
         .onAppear { loadWords() }
     }
 
@@ -619,9 +844,9 @@ struct VocabularyTab: View {
     }
 }
 
-// MARK: - Language Tab
+// MARK: - Language Tab Content
 
-struct LanguageTab: View {
+private struct LanguageTabContent: View {
     @ObservedObject private var appState = AppState.shared
 
     private let languages: [(code: String, name: String)] = [
@@ -658,30 +883,45 @@ struct LanguageTab: View {
     ]
 
     var body: some View {
-        Form {
-            Section("Detection") {
-                Toggle("Auto-detect language", isOn: $appState.autoDetectLanguage)
+        VStack(alignment: .leading, spacing: 16) {
+            // Detection
+            SectionHeader(title: "DETECTION")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Auto-detect language") {
+                    Toggle("", isOn: $appState.autoDetectLanguage)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+
                 Text("Whisper will identify the spoken language automatically. May slightly increase processing time.")
-                    .font(.system(.caption, design: .rounded))
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .settingsGlassCard()
 
-            Section("Language") {
-                Picker("Language", selection: $appState.language) {
-                    ForEach(languages, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
+            // Language
+            SectionHeader(title: "LANGUAGE")
+            VStack(spacing: 12) {
+                SettingsRow(label: "Language") {
+                    Picker("", selection: $appState.language) {
+                        ForEach(languages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
+                    .disabled(appState.autoDetectLanguage)
                 }
-                .disabled(appState.autoDetectLanguage)
 
                 if appState.autoDetectLanguage {
                     Text("Language selection is disabled while auto-detect is on.")
-                        .font(.system(.caption, design: .rounded))
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }
             }
+            .settingsGlassCard()
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -693,6 +933,7 @@ private struct BuiltInModeRow: View {
     var body: some View {
         HStack {
             Text(mode.name)
+                .font(.system(size: 13, design: .rounded))
                 .fontWeight(.medium)
             Spacer()
             if mode.systemPrompt.isEmpty {

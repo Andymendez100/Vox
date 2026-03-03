@@ -204,11 +204,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let settingsView = SettingsView()
+            .background(.ultraThinMaterial)
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Vox Settings"
-        window.setContentSize(NSSize(width: 600, height: 500))
+        window.setContentSize(NSSize(width: 640, height: 520))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

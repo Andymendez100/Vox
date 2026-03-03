@@ -246,7 +246,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Recent")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
 
             if appState.recentTranscriptions.isEmpty {
                 emptyState
@@ -262,14 +262,14 @@ struct MenuBarView: View {
         VStack(spacing: 8) {
             Image(systemName: "waveform")
                 .font(.system(size: 24, weight: .light))
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.secondary.opacity(0.5))
             Text("No transcriptions yet")
                 .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             if appState.isModelLoaded {
                 Text("Hold your hotkey to start")
                     .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.quaternary)
+                    .foregroundStyle(.secondary.opacity(0.6))
             }
         }
         .frame(maxWidth: .infinity)
