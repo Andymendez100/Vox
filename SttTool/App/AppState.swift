@@ -108,7 +108,7 @@ final class AppState: ObservableObject {
         smoothedLevels.removeFirst()
         // Exponential smoothing
         let previous = smoothedLevels.last ?? 0
-        let smoothed = previous * 0.3 + level * 0.7
+        let smoothed = previous * 0.15 + level * 0.85
         smoothedLevels.append(smoothed)
         audioLevels = smoothedLevels
     }

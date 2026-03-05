@@ -5,11 +5,13 @@ import os.log
 
 private let hotkeyLogger = Logger(subsystem: "com.voxapp.app", category: "HotkeyManager")
 
-final class HotkeyManager {
+final class HotkeyManager: ObservableObject {
     static let shared = HotkeyManager()
 
     var onKeyDown: (() -> Void)?
     var onKeyUp: (() -> Void)?
+    /// Published so the UI can show when the hotkey system is not active.
+    @Published private(set) var isActive: Bool = false
 
     fileprivate var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -63,6 +65,7 @@ final class HotkeyManager {
         tapRunLoop = nil
         tapThread = nil
         isKeyDown = false
+        isActive = false
     }
 
     func setHotkey(keyCode: UInt16, modifiers: CGEventFlags, modifierOnly: Bool = false) {
@@ -124,6 +127,9 @@ final class HotkeyManager {
         self.tapRunLoop = rl
         CFRunLoopAddSource(rl, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        DispatchQueue.main.async { [weak self] in
+            self?.isActive = true
+        }
     }
 
     private func loadSavedHotkey() {

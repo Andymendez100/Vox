@@ -147,8 +147,14 @@ actor AudioCaptureService {
 
         guard var extracted = samples, !extracted.isEmpty else { return }
 
-        // Compute RMS on raw input
-        let sumOfSquares = extracted.reduce(Float(0)) { $0 + $1 * $1 }
+        // Compute RMS and peak on raw input
+        var sumOfSquares: Float = 0
+        var peak: Float = 0
+        for sample in extracted {
+            sumOfSquares += sample * sample
+            let abs = abs(sample)
+            if abs > peak { peak = abs }
+        }
         let rms = sqrt(sumOfSquares / Float(extracted.count))
 
         // Noise gate: zero out samples below threshold to remove background noise
@@ -158,18 +164,16 @@ actor AudioCaptureService {
 
         audioSamples.append(contentsOf: extracted)
 
-        // Send audio level to callback (use gated level so waveform matches output)
-        // Use dB scaling for perceptually accurate waveform — linear RMS makes
-        // normal speech barely visible on built-in mics.
+        // Send audio level to callback — use peak amplitude for responsive
+        // waveform display. RMS is too low on many USB/built-in mics.
         if let callback = onAudioLevel {
-            let level = (noiseReductionEnabled && rms < noiseGateThreshold) ? Float(0) : rms
+            let level = (noiseReductionEnabled && rms < noiseGateThreshold) ? Float(0) : peak
             let normalized: Float
             if level > 0 {
-                // Convert to dB (range roughly -60..0 for mic input),
-                // then map to 0..1 with -50 dB as floor.
                 let db = 20 * log10(level)
                 let floor: Float = -50
-                normalized = max(0, min(1, (db - floor) / -floor))
+                let linear = max(0, min(1, (db - floor) / -floor))
+                normalized = pow(linear, 0.55)
             } else {
                 normalized = 0
             }

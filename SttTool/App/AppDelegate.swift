@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if permissions.accessibilityGranted {
             HotkeyManager.shared.start()
             logger.notice("HotkeyManager started")
+            ensureHotkeyActive()
         } else {
             logger.notice("Deferring HotkeyManager start until accessibility is granted")
             Task {
@@ -73,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 permissions.accessibilityGranted = true
                 logger.notice("Accessibility now granted! Starting HotkeyManager...")
                 HotkeyManager.shared.start()
+                self.ensureHotkeyActive()
             }
         }
 
@@ -98,6 +100,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.loadModel()
         }
 
+    }
+
+    /// Retry event tap creation if it failed on first attempt (common at login
+    /// when macOS hasn't fully initialized accessibility subsystems yet).
+    private func ensureHotkeyActive() {
+        Task {
+            // Give the background thread time to create the tap
+            try? await Task.sleep(for: .seconds(1))
+            guard !HotkeyManager.shared.isActive else {
+                logger.notice("HotkeyManager event tap is active")
+                return
+            }
+            logger.warning("Event tap not active after start(), retrying with backoff...")
+            var interval: Duration = .seconds(2)
+            for attempt in 1...6 {
+                HotkeyManager.shared.stop()
+                HotkeyManager.shared.start()
+                try? await Task.sleep(for: interval)
+                if HotkeyManager.shared.isActive {
+                    logger.notice("Event tap activated on retry attempt \(attempt)")
+                    return
+                }
+                interval = min(interval * 2, .seconds(10))
+            }
+            logger.error("Event tap failed after all retries. Check Accessibility permissions.")
+        }
     }
 
     // MARK: - Status Item
