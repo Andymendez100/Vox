@@ -4,10 +4,9 @@ struct MenuBarView: View {
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
 
-    @ObservedObject private var appState = AppState.shared
-    @ObservedObject private var modeManager = AppState.shared.modeManager
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var modeManager: ModeManager
     @State private var ringPulsing = false
-    @State private var showRecent = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -42,7 +41,6 @@ struct MenuBarView: View {
     private var headerSection: some View {
         HStack(spacing: 10) {
             ZStack {
-                // Outer glow ring
                 Circle()
                     .stroke(statusColor.opacity(0.4), lineWidth: 2)
                     .frame(width: 28, height: 28)
@@ -50,7 +48,6 @@ struct MenuBarView: View {
                     .scaleEffect(ringPulsing ? 1.15 : 1.0)
                     .opacity(ringPulsing ? 0.6 : 1.0)
 
-                // Inner filled dot
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
@@ -101,7 +98,6 @@ struct MenuBarView: View {
         } else {
             mode = modeManager.getMode(id: appState.selectedMode)
         }
-        // Voice mode has no LLM processing — show Whisper model
         if mode == nil || mode?.id == "voice" {
             return appState.modelDisplayName
         }
@@ -204,23 +200,24 @@ struct MenuBarView: View {
     // MARK: - Mode Selector
 
     private var modeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            FlowLayout(spacing: 6) {
+        HStack(spacing: 10) {
+            Picker("Mode", selection: $appState.selectedMode) {
                 ForEach(modeManager.allModes) { mode in
-                    modePill(mode)
+                    Text(mode.name).tag(mode.id)
                 }
             }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11))
                     .foregroundStyle(appState.superModeEnabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
 
-                Text("Super Mode")
+                Text("Super")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-
-                Spacer()
 
                 Toggle("", isOn: $appState.superModeEnabled)
                     .toggleStyle(.switch)
@@ -232,66 +229,34 @@ struct MenuBarView: View {
         .glassCard()
     }
 
-    private func modePill(_ mode: TranscriptionMode) -> some View {
-        let isSelected = appState.selectedMode == mode.id
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                appState.selectedMode = mode.id
-            }
-        } label: {
-            Text(mode.name)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .rounded))
-                .foregroundStyle(isSelected ? .white : .secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Color.accentColor : Color.white.opacity(0.06))
-                )
-                .shadow(color: isSelected ? Color.accentColor.opacity(0.3) : .clear, radius: 6, x: 0, y: 0)
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - Recent Transcriptions
 
     private var transcriptionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showRecent.toggle()
-                }
-            } label: {
-                HStack {
-                    Text("Recent")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Recent")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
 
-                    if !appState.recentTranscriptions.isEmpty {
-                        Text("\(appState.recentTranscriptions.count)")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
+                if !appState.recentTranscriptions.isEmpty {
+                    Text("\(appState.recentTranscriptions.count)")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(showRecent ? 90 : 0))
                 }
-            }
-            .buttonStyle(.plain)
 
-            if showRecent {
-                if appState.recentTranscriptions.isEmpty {
-                    emptyState
-                } else {
-                    transcriptionsList
+                Spacer()
+            }
+
+            if appState.recentTranscriptions.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: 2) {
+                    ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.offset) { _, text in
+                        TranscriptionRow(text: text)
+                    }
                 }
             }
         }
-        .frame(maxHeight: showRecent ? 200 : nil)
         .glassCard()
     }
 
@@ -311,16 +276,6 @@ struct MenuBarView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-    }
-
-    private var transcriptionsList: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 2) {
-                ForEach(Array(appState.recentTranscriptions.enumerated()), id: \.element) { _, text in
-                    TranscriptionRow(text: text)
-                }
-            }
-        }
     }
 
     // MARK: - Footer
@@ -432,6 +387,7 @@ private struct TranscriptionRow: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.primary.opacity(0.85))
                     .multilineTextAlignment(.leading)
+                    .lineLimit(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if showCopied {
@@ -475,48 +431,5 @@ private struct TranscriptionRow: View {
                 showCopied = false
             }
         }
-    }
-}
-
-// MARK: - Flow Layout
-
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrange(in: proposal.width ?? .infinity, subviews: subviews).size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrange(in: bounds.width, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                proposal: .unspecified
-            )
-        }
-    }
-
-    private func arrange(in maxWidth: CGFloat, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
-        var positions: [CGPoint] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var maxX: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            positions.append(CGPoint(x: x, y: y))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-            maxX = max(maxX, x - spacing)
-        }
-
-        return (CGSize(width: maxX, height: y + rowHeight), positions)
     }
 }

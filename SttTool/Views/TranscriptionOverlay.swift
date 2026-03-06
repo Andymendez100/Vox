@@ -5,7 +5,7 @@ import Combine
 // MARK: - Overlay SwiftUI View
 
 struct TranscriptionOverlayView: View {
-    @ObservedObject private var appState = AppState.shared
+    @StateObject private var appState = AppState.shared
 
     private var isRecording: Bool {
         appState.transcriptionState == .recording

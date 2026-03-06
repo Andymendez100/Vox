@@ -198,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onQuit: { NSApp.terminate(nil) }
             )
+            .environmentObject(AppState.shared)
+            .environmentObject(AppState.shared.modeManager)
         )
     }
 
